@@ -13,8 +13,40 @@ const planPrices: Record<string, number> = {
   premium: 29.90,
 }
 
+const ALLOWED_PLANS = ['basic', 'premium']
+const MAX_REQUESTS_PER_MINUTE = 5
+
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>()
+
+function checkRateLimit(identifier: string): boolean {
+  const now = Date.now()
+  const windowKey = Math.floor(now / 60000)
+  const key = `${identifier}:${windowKey}`
+  
+  const record = rateLimitStore.get(key)
+  
+  if (!record || record.resetAt < now) {
+    rateLimitStore.set(key, { count: 1, resetAt: now + 60000 })
+    return true
+  }
+
+  if (record.count >= MAX_REQUESTS_PER_MINUTE) {
+    return false
+  }
+
+  record.count += 1
+  return true
+}
+
+function sanitizeInput(input: string): string {
+  return input.trim().slice(0, 100).replace(/[<>'"]/g, '')
+}
+
+function isValidPlan(plan: string): boolean {
+  return ALLOWED_PLANS.includes(plan)
+}
+
 serve(async (req) => {
-  // Handle CORS
   if (req.method === 'OPTIONS') {
     return new Response('ok', {
       headers: {
@@ -25,12 +57,19 @@ serve(async (req) => {
     })
   }
 
+  if (req.method !== 'POST') {
+    return new Response(JSON.stringify({ error: 'Method not allowed' }), {
+      status: 405,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY)
 
-    // Verify auth
+    // Verify authentication
     const authHeader = req.headers.get('Authorization')
-    if (!authHeader) {
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { 'Content-Type': 'application/json' },
@@ -47,10 +86,47 @@ serve(async (req) => {
       })
     }
 
-    const { plan } = await req.json()
+    // Rate limiting by user ID
+    if (!checkRateLimit(user.id)) {
+      return new Response(JSON.stringify({ error: 'Too many requests. Try again later.' }), {
+        status: 429,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
 
-    if (!plan || !planPrices[plan]) {
-      return new Response(JSON.stringify({ error: 'Invalid plan' }), {
+    // Parse and validate request body
+    let body: { plan?: string }
+    try {
+      body = await req.json()
+    } catch {
+      return new Response(JSON.stringify({ error: 'Invalid JSON body' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const { plan } = body
+
+    // Validate plan parameter
+    if (!plan || typeof plan !== 'string') {
+      return new Response(JSON.stringify({ error: 'Plan is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const sanitizedPlan = sanitizeInput(plan)
+    
+    if (!isValidPlan(sanitizedPlan)) {
+      return new Response(JSON.stringify({ error: 'Invalid plan selected' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    const amount = planPrices[sanitizedPlan]
+    if (!amount || amount <= 0) {
+      return new Response(JSON.stringify({ error: 'Invalid plan price' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })
@@ -64,8 +140,8 @@ serve(async (req) => {
         'Authorization': `Bearer ${MERCADO_PAGO_TOKEN}`,
       },
       body: JSON.stringify({
-        transaction_amount: planPrices[plan],
-        description: `Plano ${plan === 'basic' ? 'Básico' : 'Premium'} - VSFit Gym`,
+        transaction_amount: amount,
+        description: `Plano ${sanitizedPlan === 'basic' ? 'Básico' : 'Premium'} - VSFit Gym`,
         payment_method_id: 'pix',
         payer: {
           email: user.email,
@@ -74,10 +150,10 @@ serve(async (req) => {
         additional_info: {
           items: [
             {
-              id: plan,
-              title: `Plano ${plan === 'basic' ? 'Básico' : 'Premium'} - VSFit Gym`,
+              id: sanitizedPlan,
+              title: `Plano ${sanitizedPlan === 'basic' ? 'Básico' : 'Premium'} - VSFit Gym`,
               quantity: 1,
-              unit_price: planPrices[plan],
+              unit_price: amount,
             },
           ],
         },
@@ -87,7 +163,7 @@ serve(async (req) => {
     if (!mpResponse.ok) {
       const errorData = await mpResponse.json()
       console.error('Mercado Pago error:', errorData)
-      return new Response(JSON.stringify({ error: 'Failed to create PIX payment', details: errorData }), {
+      return new Response(JSON.stringify({ error: 'Failed to create PIX payment' }), {
         status: 500,
         headers: { 'Content-Type': 'application/json' },
       })
@@ -100,8 +176,8 @@ serve(async (req) => {
       .from('payments')
       .insert({
         user_id: user.id,
-        plan,
-        amount: planPrices[plan],
+        plan: sanitizedPlan,
+        amount,
         mp_payment_id: paymentData.id,
         status: 'pending',
         pix_data: {
@@ -113,6 +189,10 @@ serve(async (req) => {
 
     if (dbError) {
       console.error('DB error:', dbError)
+      return new Response(JSON.stringify({ error: 'Failed to save payment' }), {
+        status: 500,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
 
     return new Response(JSON.stringify({

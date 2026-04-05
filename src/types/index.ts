@@ -2,6 +2,21 @@ import type { User, Session } from '@supabase/supabase-js'
 
 export type UserRole = 'aluno' | 'personal'
 
+export type Plan = 'free' | 'basic' | 'premium'
+
+export interface UserPermissions {
+  canCreateWorkout: boolean
+  canEditWorkout: boolean
+  canDeleteWorkout: boolean
+  canViewAnalytics: boolean
+  canManageExercises: boolean
+  canManageStudents: boolean
+  canViewFinance: boolean
+  canManagePayments: boolean
+  maxWorkouts: number
+  maxExercises: number
+}
+
 export interface Profile {
   id: string
   name: string
@@ -47,7 +62,7 @@ export interface Message {
   created_at: string
 }
 
-export interface Plan {
+export interface SubscriptionPlan {
   id: string
   name: string
   description?: string
@@ -70,7 +85,7 @@ export interface AuthContextType {
   session: Session | null
   role: UserRole
   loading: boolean
-  signIn: (email: string, password: string) => Promise<{ error: Error | null }>
-  signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null }>
+  signIn: (email: string, password: string) => Promise<{ error: Error | null; cleanMessage: string | null }>
+  signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null; cleanMessage: string | null }>
   signOut: () => Promise<void>
 }

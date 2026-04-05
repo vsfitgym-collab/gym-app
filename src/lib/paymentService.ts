@@ -53,7 +53,7 @@ export const checkPaymentStatus = async (paymentId: number): Promise<PaymentStat
   try {
     const { data: { session } } = await supabase.auth.getSession()
     
-    const webhookUrl = `${SUPABASE_URL}/functions/v1/mp-webhook?payment_id=${paymentId}`
+    const webhookUrl = `${SUPABASE_URL}/functions/v1/mercadopago-webhook?payment_id=${paymentId}`
     
     const response = await fetch(webhookUrl, {
       method: 'GET',

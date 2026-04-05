@@ -2,7 +2,6 @@ import { useState, useEffect, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
 import {
   getSubscription,
-  isPremium,
   getPlan,
   planLimits,
   type Subscription,
@@ -24,7 +23,7 @@ interface UseSubscriptionReturn {
 export function useSubscription(): UseSubscriptionReturn {
   const { user } = useAuth()
   const [subscription, setSubscription] = useState<Subscription | null>(null)
-  const [premium, setPremium] = useState(false)
+  const [currentPlan, setCurrentPlan] = useState<Plan>('free')
   const [loading, setLoading] = useState(true)
 
   const loadData = useCallback(async () => {
@@ -35,15 +34,13 @@ export function useSubscription(): UseSubscriptionReturn {
     
     setLoading(true)
     try {
-      const [sub, isPrem, currentPlan] = await Promise.all([
+      const [sub, plan] = await Promise.all([
         getSubscription(user.id),
-        isPremium(user.id),
         getPlan(user.id),
       ])
       
       setSubscription(sub)
-      setPremium(isPrem)
-      setCurrentPlan(currentPlan)
+      setCurrentPlan(plan)
     } catch (error) {
       console.error('Erro ao carregar assinatura:', error)
     } finally {
@@ -51,19 +48,18 @@ export function useSubscription(): UseSubscriptionReturn {
     }
   }, [user])
 
-  const [currentPlan, setCurrentPlan] = useState<Plan>('free')
-
   useEffect(() => {
     loadData()
   }, [loadData])
 
-  const limits = premium ? planLimits.premium : planLimits.free
+  const isSubscribed = currentPlan !== 'free'
+  const limits = planLimits[currentPlan] || planLimits.free
   const trialDaysRemaining = getTrialDaysRemaining(subscription)
 
   return {
     subscription,
     plan: currentPlan,
-    isPremium: premium,
+    isPremium: isSubscribed,
     limits,
     loading,
     trialDaysRemaining,

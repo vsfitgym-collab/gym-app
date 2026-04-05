@@ -13,14 +13,19 @@ import {
   Shield,
   Copy,
   CheckCircle2,
-  QrCode,
   Clock,
-  AlertCircle,
 } from 'lucide-react'
 import { type Plan } from '../lib/subscriptionService'
 import { useSubscription } from '../hooks/useSubscription'
-import { createPixPayment, pollPaymentStatus } from '../lib/paymentService'
+import { supabase } from '../lib/supabase'
 import './Planos.css'
+
+const PIX_KEY = 'vsfitgym@gmail.com'
+
+const planAmounts: Record<string, number> = {
+  basic: 14.90,
+  premium: 29.90,
+}
 
 const plans = [
   {
@@ -94,26 +99,24 @@ interface ChatMessage {
   id: number
   role: 'bot' | 'user'
   text: string
-  paymentData?: {
-    qr_code_base64?: string
-    qr_code?: string
-    payment_id?: number
-    status?: string
+  pixData?: {
+    pixKey: string
+    amount: string
+    planName: string
   }
 }
 
 export default function PlanosPage() {
   const { user } = useAuth()
-  const { plan: currentPlan, isPremium: isSubscribed, refresh } = useSubscription()
+  const { plan: currentPlan, isPremium: isSubscribed, refresh: refreshSubscription } = useSubscription()
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null)
   const [showAssistant, setShowAssistant] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [processing, setProcessing] = useState(false)
   const [chatStep, setChatStep] = useState<'greeting' | 'plan_selected' | 'payment' | 'confirming' | 'done'>('greeting')
-  const [paymentId, setPaymentId] = useState<number | null>(null)
-  const [paymentStatus, setPaymentStatus] = useState<string>('pending')
-  const [pollingActive, setPollingActive] = useState(false)
+  const [hasPendingPayment, setHasPendingPayment] = useState(false)
+  const [planJustApproved, setPlanJustApproved] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
@@ -122,13 +125,50 @@ export default function PlanosPage() {
   }, [messages])
 
   useEffect(() => {
+    checkPendingPayment()
+  }, [user])
+
+  useEffect(() => {
+    if (hasPendingPayment && user) {
+      pollingRef.current = setInterval(async () => {
+        const { data: payment } = await supabase
+          .from('pending_payments')
+          .select('status')
+          .eq('user_id', user!.id)
+          .eq('status', 'approved')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        if (payment) {
+          await refreshSubscription()
+          setHasPendingPayment(false)
+          setPlanJustApproved(true)
+          if (pollingRef.current) clearInterval(pollingRef.current)
+          setTimeout(() => setPlanJustApproved(false), 5000)
+        }
+      }, 5000)
+    }
+
     return () => {
       if (pollingRef.current) clearInterval(pollingRef.current)
     }
-  }, [])
+  }, [hasPendingPayment, user])
 
-  const addMessage = (role: 'bot' | 'user', text: string, paymentData?: ChatMessage['paymentData']) => {
-    setMessages(prev => [...prev, { id: Date.now(), role, text, paymentData }])
+  const checkPendingPayment = async () => {
+    if (!user) return
+    const { data } = await supabase
+      .from('pending_payments')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('status', 'pending')
+      .single()
+    
+    setHasPendingPayment(!!data)
+  }
+
+  const addMessage = (role: 'bot' | 'user', text: string, pixData?: ChatMessage['pixData']) => {
+    setMessages(prev => [...prev, { id: Date.now(), role, text, pixData }])
   }
 
   const startAssistant = (planId: Plan) => {
@@ -136,10 +176,7 @@ export default function PlanosPage() {
     setShowAssistant(true)
     setMessages([])
     setChatStep('greeting')
-    setPaymentId(null)
-    setPaymentStatus('pending')
-    setPollingActive(false)
-    if (pollingRef.current) clearInterval(pollingRef.current)
+    setProcessing(false)
 
     setTimeout(() => {
       addMessage('bot', `Olá! 👋 Eu sou o assistente de pagamento da VSFit Gym.
@@ -148,78 +185,60 @@ Posso te ajudar a escolher o melhor plano e finalizar sua assinatura. Qual plano
     }, 500)
   }
 
-  const generatePixPayment = async () => {
+  const generatePixInfo = async () => {
     if (!selectedPlan || !user) return
 
     setProcessing(true)
     setChatStep('confirming')
 
-    const result = await createPixPayment(selectedPlan)
+    const amount = planAmounts[selectedPlan] || 0
+    const planName = selectedPlan === 'basic' ? 'Básico' : 'Premium'
 
-    if (result.success && result.qr_code_base64) {
-      setPaymentId(result.payment_id)
-      setPaymentStatus('pending')
+    // Save pending payment
+    await supabase.from('pending_payments').insert({
+      user_id: user.id,
+      plan: selectedPlan,
+      amount,
+      status: 'pending',
+      pix_key: PIX_KEY,
+    })
 
-      addMessage('bot', `Perfeito! 📱 Aqui está o QR Code PIX para pagamento:
+    setHasPendingPayment(true)
 
-**Plano:** ${selectedPlan === 'basic' ? 'Básico' : 'Premium'}
-**Valor:** R$ ${selectedPlan === 'basic' ? '14,90' : '29,90'}
+    addMessage('bot', `Perfeito! 📱 Aqui está a chave PIX para pagamento:
 
-Escaneie o QR Code abaixo com seu app bancário ou use o PIX Copia e Cola.
+**Plano:** ${planName}
+**Valor:** R$ ${amount.toFixed(2).replace('.', ',')}
+**Chave PIX (E-mail):** ${PIX_KEY}
 
-⏳ Aguardando confirmação do pagamento...`, {
-        qr_code_base64: result.qr_code_base64,
-        qr_code: result.qr_code,
-        payment_id: result.payment_id,
-        status: 'pending',
-      })
+Copie a chave abaixo e faça o pagamento pelo seu app bancário:
 
-      // Start polling for payment status
-      setPollingActive(true)
-      pollPaymentStatus(
-        result.payment_id,
-        async (status) => {
-          setPaymentStatus(status.status)
+⏳ **Após pagar, clique em "Já paguei"**
+Seu pagamento será verificado pelo personal e o plano ativado em até 24h.`, {
+      pixKey: PIX_KEY,
+      amount: amount.toFixed(2),
+      planName,
+    })
 
-          if (status.status === 'approved') {
-            setPollingActive(false)
-            setChatStep('done')
-            setProcessing(false)
+    setProcessing(false)
+  }
 
-            // Refresh subscription data
-            await refresh()
+  const confirmPayment = async () => {
+    if (!user || !selectedPlan) return
+    setProcessing(true)
 
-            addMessage('bot', `🎉 **Pagamento confirmado!**
+    await new Promise(resolve => setTimeout(resolve, 1000))
 
-Seu plano **${selectedPlan === 'basic' ? 'Básico' : 'Premium'}** foi ativado automaticamente!
+    setProcessing(false)
+    setChatStep('done')
 
-✅ Acesso liberado
-✅ Todos os recursos disponíveis
-✅ Próxima cobrança em 30 dias
+    addMessage('bot', `✅ **Solicitação enviada!**
 
-Qualquer dúvida, é só me chamar. Bons treinos! 💪`)
-          } else if (status.status === 'rejected' || status.status === 'cancelled') {
-            setPollingActive(false)
-            setProcessing(false)
+Seu pagamento será verificado pelo personal. Você receberá uma notificação quando o plano for ativado.
 
-            addMessage('bot', `❌ **Pagamento não confirmado**
+⏱️ Prazo: até 24 horas úteis
 
-O pagamento foi ${status.status === 'rejected' ? 'recusado' : 'cancelado'}.
-
-Tente novamente com outro método de pagamento ou entre em contato com o suporte.`)
-          }
-        },
-        60,
-        3000
-      )
-    } else {
-      setProcessing(false)
-      addMessage('bot', `❌ **Erro ao gerar PIX**
-
-Não foi possível gerar o pagamento. Verifique sua conexão e tente novamente.
-
-Erro: ${result.error || 'Desconhecido'}`)
-    }
+Obrigado pela preferência! 💪`)
   }
 
   const handleUserMessage = async (text: string) => {
@@ -283,7 +302,7 @@ Digite o nome do plano que te interessou.`), 800)
 
 **Plano:** ${selectedPlan === 'basic' ? 'Básico - R$ 14,90/mês' : 'Premium - R$ 29,90/mês'}
 
-Clique em **"Gerar PIX"** para criar o QR Code.`), 800)
+Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
       } else if (lowerText.includes('trocar') || lowerText.includes('outro') || lowerText.includes('mudar')) {
         setChatStep('greeting')
         setTimeout(() => addMessage('bot', `Sem problema! Qual plano você prefere?
@@ -296,7 +315,7 @@ Clique em **"Gerar PIX"** para criar o QR Code.`), 800)
       }
     } else if (chatStep === 'payment') {
       if (lowerText.includes('gerar') || lowerText.includes('pix') || lowerText.includes('qr') || lowerText.includes('pagar') || lowerText.includes('sim')) {
-        await generatePixPayment()
+        await generatePixInfo()
       } else if (lowerText.includes('trocar') || lowerText.includes('outro')) {
         setChatStep('plan_selected')
         setTimeout(() => addMessage('bot', `Sem problema! Qual plano você prefere?
@@ -305,29 +324,23 @@ Clique em **"Gerar PIX"** para criar o QR Code.`), 800)
 ⚡ **Básico** - R$ 14,90/mês
 👑 **Premium** - R$ 29,90/mês`), 800)
       } else {
-        setTimeout(() => addMessage('bot', `Clique em **"Gerar PIX"** para criar o QR Code e realizar o pagamento.`), 800)
+        setTimeout(() => addMessage('bot', `Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
       }
     } else if (chatStep === 'confirming') {
-      if (lowerText.includes('já paguei') || lowerText.includes('ja paguei') || lowerText.includes('confirmar')) {
-        addMessage('bot', `⏳ Verificando pagamento...
+      if (lowerText.includes('já paguei') || lowerText.includes('ja paguei') || lowerText.includes('confirmar') || lowerText.includes('paguei')) {
+        await confirmPayment()
+      } else if (lowerText.includes('trocar') || lowerText.includes('outro')) {
+        setChatStep('plan_selected')
+        setTimeout(() => addMessage('bot', `Sem problema! Qual plano você prefere?
 
-Aguarde enquanto confirmamos o recebimento. Isso pode levar alguns segundos.`)
-        
-        // Force a status check
-        if (paymentId) {
-          const { checkPaymentStatus } = await import('../lib/paymentService')
-          const status = await checkPaymentStatus(paymentId)
-          if (status && status.status === 'approved') {
-            setChatStep('done')
-            await refresh()
-            addMessage('bot', `🎉 **Pagamento confirmado!**
-
-Seu plano foi ativado automaticamente! Aproveite! 💪`)
-          }
-        }
+🎁 **Free** - 7 dias grátis
+⚡ **Básico** - R$ 14,90/mês
+👑 **Premium** - R$ 29,90/mês`), 800)
+      } else {
+        setTimeout(() => addMessage('bot', `Após fazer o PIX, clique em **"Já paguei"** para enviar a solicitação de ativação.`), 800)
       }
     } else if (chatStep === 'done') {
-      setTimeout(() => setShowAssistant(false), 2000)
+      setTimeout(() => setShowAssistant(false), 3000)
     }
   }
 
@@ -342,6 +355,12 @@ Seu plano foi ativado automaticamente! Aproveite! 💪`)
           <h2>Escolha seu Plano</h2>
           <p>Selecione o plano ideal para sua jornada fitness</p>
         </div>
+        {planJustApproved && (
+          <div className="plan-approved-toast">
+            <CheckCircle2 size={16} />
+            <span>Plano ativado com sucesso!</span>
+          </div>
+        )}
       </div>
 
       <div className="planos-grid">
@@ -397,10 +416,15 @@ Seu plano foi ativado automaticamente! Aproveite! 💪`)
 
               <button
                 className={`plano-btn ${p.popular ? 'btn-premium' : p.id === 'basic' ? 'btn-basic' : 'btn-free'}`}
-                disabled={isCurrentPlan}
+                disabled={isCurrentPlan || hasPendingPayment}
                 onClick={() => startAssistant(p.id)}
               >
-                {isCurrentPlan ? (
+                {hasPendingPayment ? (
+                  <>
+                    <Clock size={16} />
+                    Pagamento pendente
+                  </>
+                ) : isCurrentPlan ? (
                   <>
                     <CheckCircle2 size={16} />
                     Plano atual
@@ -470,54 +494,26 @@ Seu plano foi ativado automaticamente! Aproveite! 💪`)
                       )
                     })}
 
-                    {/* PIX QR Code */}
-                    {msg.paymentData?.qr_code_base64 && (
+                    {/* PIX Key */}
+                    {msg.pixData && (
                       <div className="payment-qr-code">
-                        <div className="qr-code-image">
-                          <img 
-                            src={`data:image/png;base64,${msg.paymentData.qr_code_base64}`} 
-                            alt="QR Code PIX" 
-                          />
+                        <div className="pix-key-display">
+                          <span className="pix-key-icon">📧</span>
+                          <code className="pix-key-code">{msg.pixData.pixKey}</code>
+                          <button className="btn-copy" onClick={() => copyToClipboard(msg.pixData!.pixKey)}>
+                            <Copy size={14} />
+                            Copiar chave
+                          </button>
                         </div>
-                        {msg.paymentData.qr_code && (
-                          <div className="pix-payload">
-                            <span className="pix-label">PIX Copia e Cola:</span>
-                            <code className="pix-code">{msg.paymentData.qr_code}</code>
-                            <button className="btn-copy" onClick={() => copyToClipboard(msg.paymentData!.qr_code!)}>
-                              <Copy size={14} />
-                              Copiar código
-                            </button>
-                          </div>
-                        )}
-                        <div className={`payment-status-indicator ${paymentStatus}`}>
-                          {paymentStatus === 'pending' && (
-                            <>
-                              <Clock size={14} className="spinner" />
-                              <span>Aguardando pagamento...</span>
-                            </>
-                          )}
-                          {paymentStatus === 'approved' && (
-                            <>
-                              <CheckCircle2 size={14} />
-                              <span>Pagamento confirmado!</span>
-                            </>
-                          )}
-                          {(paymentStatus === 'rejected' || paymentStatus === 'cancelled') && (
-                            <>
-                              <AlertCircle size={14} />
-                              <span>Pagamento {paymentStatus === 'rejected' ? 'recusado' : 'cancelado'}</span>
-                            </>
-                          )}
+                        <div className="pix-info">
+                          <span>💡 Abra seu app bancário → PIX → Cole a chave e envie</span>
                         </div>
-                        {pollingActive && (
-                          <p className="polling-note">🔄 Verificando automaticamente a cada 3 segundos...</p>
-                        )}
                       </div>
                     )}
                   </div>
                 </div>
               ))}
-              {processing && !messages.some(m => m.role === 'bot' && m.paymentData?.qr_code_base64) && (
+              {processing && (
                 <div className="message bot">
                   <div className="message-avatar"><Bot size={14} /></div>
                   <div className="message-bubble processing">
@@ -546,8 +542,7 @@ Seu plano foi ativado automaticamente! Aproveite! 💪`)
                 )}
                 {chatStep === 'payment' && (
                   <button onClick={() => handleUserMessage('Gerar PIX')} className="btn-generate-pix">
-                    <QrCode size={14} />
-                    Gerar PIX
+                    💳 Gerar PIX
                   </button>
                 )}
                 {chatStep === 'confirming' && (

@@ -12,6 +12,7 @@ const pageTitles: Record<string, string> = {
   '/conquistas': 'Conquistas',
   '/exercicios/editar': 'Editar Exercício',
   '/planos': 'Planos',
+  '/pagamentos': 'Pagamentos Pendentes',
   '/chat': 'Chat',
   '/financeiro': 'Financeiro',
 }

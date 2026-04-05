@@ -19,6 +19,7 @@ const navItemsPersonal = [
   { path: '/exercicios', label: 'Exercícios', icon: Target },
   { path: '/conquistas', label: 'Conquistas', icon: Trophy },
   { path: '/planos', label: 'Planos', icon: Crown },
+  { path: '/pagamentos', label: 'Pagamentos', icon: DollarSign },
   { path: '/chat', label: 'Chat', icon: MessageCircle },
   { path: '/financeiro', label: 'Financeiro', icon: DollarSign },
 ]

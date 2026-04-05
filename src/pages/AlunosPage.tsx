@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { SkeletonList } from '../components/ui/Skeleton'
-import { Mail, Calendar, User, Search } from 'lucide-react'
+import { Mail, Calendar, User, Search, Crown, Zap } from 'lucide-react'
 import './Alunos.css'
 
 interface Aluno {
@@ -9,6 +9,7 @@ interface Aluno {
   nome: string
   email: string
   plano: string
+  planStatus: string
   avatar_url?: string
   created_at?: string
   status: 'ativo' | 'inativo'
@@ -26,28 +27,44 @@ export default function AlunosPage() {
 
   const carregarAlunos = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, email, role, name, created_at, avatar_url')
         .eq('role', 'aluno')
         .order('created_at', { ascending: false })
 
-      if (error) {
-        console.error('Erro Supabase:', error)
-        setError(error.message)
+      if (profilesError) {
+        console.error('Erro Supabase:', profilesError)
+        setError(profilesError.message)
         setAlunos([])
         return
       }
 
-      const formattedAlunos = (data || []).map((profile: any) => ({
-        id: profile.id,
-        nome: profile.name || profile.email?.split('@')[0] || 'Aluno',
-        email: profile.email || '',
-        plano: 'Básico',
-        avatar_url: profile.avatar_url || null,
-        created_at: profile.created_at || null,
-        status: 'ativo' as const,
-      }))
+      const formattedAlunos: Aluno[] = []
+
+      for (const profile of profilesData || []) {
+        const { data: subData } = await supabase
+          .from('subscriptions')
+          .select('plan, status')
+          .eq('user_id', profile.id)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+
+        const planName = subData?.plan || 'free'
+        const planStatus = subData?.status || 'inactive'
+
+        formattedAlunos.push({
+          id: profile.id,
+          nome: profile.name || profile.email?.split('@')[0] || 'Aluno',
+          email: profile.email || '',
+          plano: planName === 'free' ? 'Free' : planName === 'basic' ? 'Básico' : 'Premium',
+          planStatus: planStatus,
+          avatar_url: profile.avatar_url || null,
+          created_at: profile.created_at || null,
+          status: planStatus === 'active' ? 'ativo' : 'inativo',
+        })
+      }
 
       setAlunos(formattedAlunos)
     } catch (error: any) {
@@ -128,7 +145,14 @@ export default function AlunosPage() {
               </div>
               
               <div className="aluno-card-footer">
-                <span className="aluno-plano">{aluno.plano}</span>
+                <span className={`aluno-plano aluno-plano-${aluno.plano.toLowerCase()}`}>
+                  {aluno.plano === 'Premium' && <Crown size={12} />}
+                  {aluno.plano === 'Básico' && <Zap size={12} />}
+                  {aluno.plano}
+                  {aluno.planStatus === 'active' && (
+                    <span className="plano-badge-ativo">Ativo</span>
+                  )}
+                </span>
               </div>
             </div>
           ))}

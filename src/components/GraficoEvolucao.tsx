@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, memo } from 'react'
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell } from 'recharts'
 import { Calendar, TrendingUp, Clock, BarChart3, Activity, Target } from 'lucide-react'
 import './GraficoEvolucao.css'
@@ -47,7 +47,7 @@ const dadosMensal: MonthlyData[] = [
 
 const COLORS = ['#8b5cf6', '#06b6d4', '#10b981', '#f59e0b']
 
-export default function GraficoEvolucao() {
+const GraficoEvolucao = memo(function GraficoEvolucao() {
   const [tipoGrafico, setTipoGrafico] = useState<'area' | 'bar' | 'line'>('area')
   const [periodo, setPeriodo] = useState<'semana' | 'mes'>('semana')
   const [semana, setSemana] = useState<'atual' | 'passada'>('atual')
@@ -433,4 +433,6 @@ export default function GraficoEvolucao() {
       </div>
     </div>
   )
-}
+})
+
+export default GraficoEvolucao

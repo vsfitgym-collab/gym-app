@@ -73,7 +73,6 @@ export default function TreinoPage() {
       setExercicios(exerciciosLocal)
       setLoading(false)
       
-      // Restore session if exists
       if (user) {
         const activeSession = await getActiveSession(user.id, id)
         if (activeSession) {
@@ -137,7 +136,6 @@ export default function TreinoPage() {
         setExercicios(formattedExercicios)
       }
 
-      // Restore session if exists
       if (user) {
         const activeSession = await getActiveSession(user.id, id)
         if (activeSession) {
@@ -153,7 +151,18 @@ export default function TreinoPage() {
     }
   }
 
-  // Debounced auto-save
+  const exercicio = exercicios[exercicioAtual]
+  const isUltimaSerie = serieAtual >= (exercicio?.sets || 1)
+  const isUltimoExercicio = exercicioAtual >= exercicios.length - 1
+
+  const totalSeries = exercicios.reduce((acc, ex) => acc + ex.sets, 0)
+  const seriesConcluidas = exercicios
+    .slice(0, exercicioAtual)
+    .reduce((acc, ex) => acc + ex.sets, 0)
+  const progressoPercentual = totalSeries > 0 
+    ? Math.round(((seriesConcluidas + (serieAtual - 1)) / totalSeries) * 100) 
+    : 0
+
   const autoSaveProgress = useCallback((exerciseIndex: number, setNumber: number) => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     
@@ -174,7 +183,6 @@ export default function TreinoPage() {
     }, 1000)
   }, [sessionId, user, exercicios])
 
-  // Create session on first exercise start
   const ensureSession = useCallback(async () => {
     if (sessionId || !user || !id) return sessionId
     
@@ -185,18 +193,6 @@ export default function TreinoPage() {
     }
     return null
   }, [sessionId, user, id])
-
-  const exercicio = exercicios[exercicioAtual]
-  const isUltimaSerie = serieAtual >= (exercicio?.sets || 1)
-  const isUltimoExercicio = exercicioAtual >= exercicios.length - 1
-
-  const totalSeries = exercicios.reduce((acc, ex) => acc + ex.sets, 0)
-  const seriesConcluidas = exercicios
-    .slice(0, exercicioAtual)
-    .reduce((acc, ex) => acc + ex.sets, 0)
-  const progressoPercentual = totalSeries > 0 
-    ? Math.round(((seriesConcluidas + (serieAtual - 1)) / totalSeries) * 100) 
-    : 0
 
   const tocarSom = useCallback(() => {
     if (audioRef.current) {
@@ -312,7 +308,6 @@ export default function TreinoPage() {
     if (timerRef.current) clearInterval(timerRef.current)
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     
-    // Abandon session if in progress
     if (sessionId && !treinoConcluido) {
       await abandonSession(sessionId)
     }
@@ -322,8 +317,9 @@ export default function TreinoPage() {
 
   if (loading) {
     return (
-      <div className="treino-fullscreen">
-        <div className="treino-loading">Carregando treino...</div>
+      <div className="treino-fullscreen treino-loading-screen">
+        <div className="loading-spinner" />
+        <span>Carregando treino...</span>
       </div>
     )
   }
@@ -331,32 +327,94 @@ export default function TreinoPage() {
   if (treinoConcluido) {
     return (
       <div className="treino-fullscreen treino-concluido">
-        <audio ref={audioRef} preload="auto">
-          <source src="https://assets.mixkit.co/active/storage/sفات/2869/2869-preview.mp3" type="audio/mp3" />
-        </audio>
-        <div className="concluido-icon">
-          <CheckCircle size={100} />
-        </div>
-        <h2>TREINO CONCLUÍDO</h2>
-        <div className="concluido-detalhes">
-          <div className="detalhe-item">
-            <span className="detalhe-valor">{exercicios.length}</span>
-            <span className="detalhe-label">Exercícios</span>
+        <div className="concluido-bg-glow" />
+        
+        <div className="concluido-content">
+          {/* Header - Check Icon */}
+          <div className="concluido-header">
+            <div className="concluido-icon-wrapper">
+              <CheckCircle size={80} className="concluido-check-icon" />
+            </div>
+            <h1 className="concluido-title">TREINO CONCLUÍDO</h1>
+            <p className="concluido-subtitle">{treinoNome}</p>
           </div>
-          <div className="detalhe-item">
-            <span className="detalhe-valor">{exercicios.reduce((acc, ex) => acc + ex.sets, 0)}</span>
-            <span className="detalhe-label">Séries</span>
+
+          {/* Quick Stats */}
+          <div className="concluido-quick-stats">
+            <div className="quick-stat">
+              <span className="quick-stat-value green">{exercicios.length}</span>
+              <span className="quick-stat-label">Exercícios</span>
+            </div>
+            <div className="quick-stat-divider" />
+            <div className="quick-stat">
+              <span className="quick-stat-value purple">{totalSeries}</span>
+              <span className="quick-stat-label">Séries</span>
+            </div>
+          </div>
+
+          {/* Success Card */}
+          <div className="concluido-success-card">
+            <div className="success-card-icon">
+              <CheckCircle size={20} />
+            </div>
+            <div className="success-card-text">
+              <span className="success-title">Treino concluído!</span>
+              <span className="success-desc">Você está evoluindo a cada treino</span>
+            </div>
+          </div>
+
+          {/* Stats Cards */}
+          <div className="concluido-stats-grid">
+            <div className="stats-card glass">
+              <div className="stats-card-icon streak">
+                <span>🔥</span>
+              </div>
+              <div className="stats-card-content">
+                <span className="stats-value">3</span>
+                <span className="stats-label">Dias seguidos</span>
+              </div>
+            </div>
+
+            <div className="stats-card glass">
+              <div className="stats-card-icon week">
+                <span>📅</span>
+              </div>
+              <div className="stats-card-content">
+                <div className="week-progress">
+                  <span className="stats-value">3/5</span>
+                </div>
+                <div className="week-bar">
+                  <div className="week-bar-fill" style={{ width: '60%' }} />
+                </div>
+                <span className="stats-label">Esta semana</span>
+              </div>
+            </div>
+
+            <div className="stats-card glass">
+              <div className="stats-card-icon month">
+                <span>📊</span>
+              </div>
+              <div className="stats-card-content">
+                <span className="stats-value">12</span>
+                <span className="stats-label">Este mês</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Presence Check-in */}
+          <PresenceCheckIn workoutId={id || ''} workoutName={treinoNome} />
+
+          {/* Action Buttons */}
+          <div className="concluido-actions">
+            <button className="btn-cta-primary" onClick={reiniciarTreino}>
+              <RotateCcw size={18} />
+              <span>Novo Treino</span>
+            </button>
+            <button className="btn-cta-secondary" onClick={sairTreino}>
+              <span>Sair</span>
+            </button>
           </div>
         </div>
-        <PresenceCheckIn workoutId={id || ''} workoutName={treinoNome} />
-        <button className="btn-reiniciar" onClick={reiniciarTreino}>
-          <RotateCcw size={20} />
-          <span>Novo Treino</span>
-        </button>
-        <button className="btn-sair" onClick={sairTreino}>
-          <X size={20} />
-          <span>Sair</span>
-        </button>
       </div>
     )
   }
@@ -364,7 +422,7 @@ export default function TreinoPage() {
   if (descansoAtivo || mostrarProximo) {
     const proximoEx = isUltimaSerie && !isUltimoExercicio 
       ? exercicios[exercicioAtual + 1]?.nome 
-      : (isUltimaSerie ? `Série ${serieAtual + 1}` : `Série ${serieAtual + 1}`)
+      : `Série ${serieAtual + 1}`
 
     const totalDescanso = isUltimaSerie && !isUltimoExercicio 
       ? exercicios[exercicioAtual + 1]?.rest_seconds 
@@ -372,23 +430,41 @@ export default function TreinoPage() {
 
     return (
       <div className="treino-fullscreen descanso-screen">
-        <audio ref={audioRef} preload="auto">
-          <source src="https://assets.mixkit.co/active/storage/sفات/2869/2869-preview.mp3" type="audio/mp3" />
-        </audio>
-        
         <button className="btn-fechar-descanso" onClick={sairTreino}>
-          <X size={24} />
+          <X size={20} />
         </button>
 
         <div className="descanso-content">
           <span className="descanso-label">DESCANSO</span>
           
-          <ContadorCircularGrandi tempo={tempoRestante} total={totalDescanso || 60} />
+          <div className="contador-circular-grande">
+            <svg viewBox="0 0 200 200">
+              <circle className="circular-bg" cx="100" cy="100" r="90" />
+              <circle
+                className="circular-progress"
+                cx="100"
+                cy="100"
+                r="90"
+                style={{
+                  strokeDasharray: 2 * Math.PI * 90,
+                  strokeDashoffset: totalDescanso > 0 
+                    ? ((totalDescanso - tempoRestante) / totalDescanso) * 2 * Math.PI * 90 
+                    : 0
+                }}
+              />
+            </svg>
+            <div className="contador-texto">
+              <span className="contador-tempo">
+                {Math.floor(tempoRestante / 60) > 0 ? `${Math.floor(tempoRestante / 60)}:` : ''}
+                {(tempoRestante % 60).toString().padStart(2, '0')}
+              </span>
+            </div>
+          </div>
 
           <div className="descanso-proximo">
             {mostrarProximo ? (
               <button className="btn-continuar" onClick={proximoPasso}>
-                <Play size={28} />
+                <Play size={24} />
                 <span>Continuar</span>
               </button>
             ) : (
@@ -396,8 +472,8 @@ export default function TreinoPage() {
                 <p className="proximo-label">Próximo:</p>
                 <h3 className="proximo-exercicio">{proximoEx}</h3>
                 <button className="btn-pular-descanso" onClick={pularDescanso}>
-                  <SkipForward size={20} />
-                  <span>Pular</span>
+                  <SkipForward size={18} />
+                  <span>Pular Descanso</span>
                 </button>
               </>
             )}
@@ -418,127 +494,109 @@ export default function TreinoPage() {
 
   return (
     <div className="treino-fullscreen">
-      <div className="treino-header">
-        <button className="btn-voltar" onClick={sairTreino}>
-          <X size={24} />
-        </button>
-        <div className="treino-titulo">
-          <span className="progresso-text">{exercicioAtual + 1}/{exercicios.length}</span>
-          {savedIndicator && (
-            <span className="saved-indicator">✓ Salvo</span>
-          )}
+      {/* Top Progress Bar */}
+      <div className="treino-top-bar">
+        <div className="treino-progress-bar">
+          <div 
+            className="treino-progress-fill" 
+            style={{ width: `${progressoPercentual}%` }}
+          />
         </div>
-        <div style={{ width: 40 }}></div>
+        <div className="treino-progress-info">
+          <button className="btn-exit" onClick={sairTreino}>
+            <X size={18} />
+          </button>
+          <div className="progress-text">
+            <span className="progress-exercise">{exercicioAtual + 1} / {exercicios.length}</span>
+            <span className="progress-percent">{progressoPercentual}%</span>
+          </div>
+          {savedIndicator && <span className="saved-indicator">✓ Salvo</span>}
+          <div style={{ width: 34 }} />
+        </div>
       </div>
 
-      <div className="treino-progress-bar">
-        <div 
-          className="treino-progress-fill" 
-          style={{ width: `${progressoPercentual}%` }}
-        />
-        <span className="treino-progress-percent">{progressoPercentual}%</span>
-      </div>
+      {/* Main Exercise Content */}
+      <div className="treino-main">
+        <div className="exercicio-header">
+          <span className="muscle-group-tag">{exercicio.muscle_group}</span>
+          <h1 className="exercicio-nome">{exercicio.nome}</h1>
+        </div>
 
-      <div className="exercicio-tela">
-        <div className="exercicio-nome-tela">{exercicio.nome}</div>
-        
-        <div className="exercicio-gif-tela">
+        <div className="exercicio-image-card">
           {exercicio.gif_url ? (
             <img src={exercicio.gif_url} alt={exercicio.nome} />
           ) : (
-            <div className="gif-placeholder-tela">
-              <span>{exercicio.nome}</span>
+            <div className="gif-placeholder">
+              <span className="placeholder-icon">💪</span>
+              <span className="placeholder-text">{exercicio.nome}</span>
             </div>
           )}
         </div>
 
-        <div className="exercicio-info-tela">
-          <div className="serie-tela">
-            <span className="serie-numero">{serieAtual}</span>
-            <span className="serie-total">/ {exercicio.sets}</span>
-            <span className="serie-label">SÉRIE</span>
+        <div className="exercicio-stats">
+          <div className="stat-box">
+            <div className="stat-box-value">
+              <span className="stat-current">{serieAtual}</span>
+              <span className="stat-divider">/</span>
+              <span className="stat-total">{exercicio.sets}</span>
+            </div>
+            <span className="stat-box-label">SÉRIES</span>
           </div>
-          <div className="reps-tela">
-            <span className="reps-numero">{exercicio.reps}</span>
-            <span className="reps-label">REPETIÇÕES</span>
+          <div className="stat-box highlight">
+            <div className="stat-box-value">
+              <span className="stat-current">{exercicio.reps}</span>
+            </div>
+            <span className="stat-box-label">REPETIÇÕES</span>
+          </div>
+          <div className="stat-box">
+            <div className="stat-box-value">
+              <span className="stat-current">{exercicio.rest_seconds}s</span>
+            </div>
+            <span className="stat-box-label">DESCANSO</span>
           </div>
         </div>
       </div>
 
-      <div className="treino-acoes">
-        <button 
-          className="btn-navegar" 
-          onClick={exercicioAnterior}
-          disabled={exercicioAtual === 0}
-        >
-          <ChevronLeft size={32} />
-        </button>
-        
-        <button className="btn-concluir-serie" onClick={iniciarSerie}>
-          {isUltimaSerie 
-            ? (isUltimoExercicio ? 'FINALIZAR' : 'PRÓXIMO EXERCÍCIO') 
-            : 'PRÓXIMA SÉRIE'}
-        </button>
-        
-        <button 
-          className="btn-navegar" 
-          onClick={proximoExercicio}
-          disabled={isUltimoExercicio}
-        >
-          <ChevronRight size={32} />
-        </button>
-      </div>
+      {/* Bottom Fixed Actions */}
+      <div className="treino-bottom-bar">
+        <div className="exercise-dots">
+          {exercicios.map((_, index) => (
+            <button
+              key={index}
+              className={`exercise-dot ${index === exercicioAtual ? 'active' : ''} ${index < exercicioAtual ? 'completed' : ''}`}
+              onClick={() => {
+                setExercicioAtual(index)
+                setSerieAtual(1)
+                ensureSession()
+                autoSaveProgress(index, 1)
+              }}
+            />
+          ))}
+        </div>
 
-      <div className="exercicios-lista-tela">
-        {exercicios.map((ex, index) => (
-          <button
-            key={ex.id}
-            className={`exercicio-item-tela ${index === exercicioAtual ? 'ativo' : ''} ${index < exercicioAtual ? 'concluido' : ''}`}
-            onClick={() => {
-              setExercicioAtual(index)
-              setSerieAtual(1)
-              ensureSession()
-              autoSaveProgress(index, 1)
-            }}
+        <div className="action-buttons">
+          <button 
+            className="btn-nav" 
+            onClick={exercicioAnterior}
+            disabled={exercicioAtual === 0}
           >
-            {index + 1}
+            <ChevronLeft size={22} />
           </button>
-        ))}
-      </div>
-    </div>
-  )
-}
-
-function ContadorCircularGrandi({ tempo, total }: { tempo: number; total: number }) {
-  const circumference = 2 * Math.PI * 90
-  const progress = total > 0 ? ((total - tempo) / total) * circumference : 0
-  const mins = Math.floor(tempo / 60)
-  const secs = tempo % 60
-
-  return (
-    <div className="contador-circular-grande">
-      <svg viewBox="0 0 200 200">
-        <circle
-          className="circular-bg"
-          cx="100"
-          cy="100"
-          r="90"
-        />
-        <circle
-          className="circular-progress"
-          cx="100"
-          cy="100"
-          r="90"
-          style={{
-            strokeDasharray: circumference,
-            strokeDashoffset: progress
-          }}
-        />
-      </svg>
-      <div className="contador-texto">
-        <span className="contador-tempo">
-          {mins > 0 ? `${mins}:` : ''}{secs.toString().padStart(2, '0')}
-        </span>
+          
+          <button className="btn-main-action" onClick={iniciarSerie}>
+            {isUltimaSerie 
+              ? (isUltimoExercicio ? 'FINALIZAR TREINO' : 'PRÓXIMO EXERCÍCIO') 
+              : 'PRÓXIMA SÉRIE'}
+          </button>
+          
+          <button 
+            className="btn-nav" 
+            onClick={proximoExercicio}
+            disabled={isUltimoExercicio}
+          >
+            <ChevronRight size={22} />
+          </button>
+        </div>
       </div>
     </div>
   )

@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react'
+import { useState, useCallback, memo } from 'react'
 import { ChevronDown, ChevronUp, Target, Wrench, Clock } from 'lucide-react'
 import type { Exercise } from '../../lib/exerciseTranslations'
 import './ExerciseCard.css'
@@ -8,7 +8,7 @@ interface ExerciseCardProps {
   onClick?: (exercise: Exercise) => void
 }
 
-export default function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
+const ExerciseCard = memo(function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
   const [showInstructions, setShowInstructions] = useState(false)
@@ -18,6 +18,11 @@ export default function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
     e.stopPropagation()
     onClick?.(exercise)
   }, [exercise, onClick])
+
+  const handleToggleInstructions = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation()
+    setShowInstructions(prev => !prev)
+  }, [])
 
   return (
     <div className="exercise-card" onClick={handleClick}>
@@ -64,10 +69,7 @@ export default function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
           <div className="exercise-instructions">
             <button 
               className="instructions-toggle"
-              onClick={(e) => {
-                e.stopPropagation()
-                setShowInstructions(!showInstructions)
-              }}
+              onClick={handleToggleInstructions}
             >
               <Clock size={14} />
               <span>Como executar</span>
@@ -89,7 +91,7 @@ export default function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
       </div>
     </div>
   )
-}
+})
 
 interface ExerciseListProps {
   exercises: Exercise[]
@@ -98,7 +100,7 @@ interface ExerciseListProps {
   onExerciseClick?: (exercise: Exercise) => void
 }
 
-export function ExerciseList({ 
+export const ExerciseList = memo(function ExerciseList({ 
   exercises, 
   loading, 
   error, 
@@ -150,7 +152,7 @@ export function ExerciseList({
       ))}
     </div>
   )
-}
+})
 
 function ExerciseCardSkeleton() {
   return (

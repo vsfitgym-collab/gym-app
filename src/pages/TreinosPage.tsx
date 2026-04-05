@@ -2,10 +2,101 @@ import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
-import { Dumbbell, Clock, FileText, Plus, TrendingUp, ChevronRight, Edit2, Play } from 'lucide-react'
+import { Dumbbell, Clock, FileText, Plus, Play, Edit2, ChevronRight, TrendingUp } from 'lucide-react'
 import { workouts as workoutsData, type Workout, getLevelColor, getLevelLabel } from '../data/workoutsData'
 import { SkeletonList } from '../components/ui/Skeleton'
 import './Treinos.css'
+
+interface WorkoutCardProps {
+  treino: Workout
+  index: number
+  role: string
+  progress: number
+  onCardClick: (id: string) => void
+  onActionClick: (e: React.MouseEvent, id: string) => void
+}
+
+function WorkoutCard({ treino, index, role, progress, onCardClick, onActionClick }: WorkoutCardProps) {
+  return (
+    <div 
+      className={`treino-card ${role !== 'personal' ? 'clickable' : ''}`}
+      style={{ animationDelay: `${index * 0.06}s` }}
+      onClick={() => onCardClick(treino.id)}
+    >
+      {/* Card Header */}
+      <div className="card-top">
+        <div className="card-icon-circle">
+          <Dumbbell size={20} />
+        </div>
+        <span 
+          className="level-badge"
+          style={{ 
+            background: `${getLevelColor(treino.level)}18`,
+            color: getLevelColor(treino.level),
+            borderColor: `${getLevelColor(treino.level)}30`
+          }}
+        >
+          {getLevelLabel(treino.level)}
+        </span>
+      </div>
+
+      {/* Card Body */}
+      <div className="card-body">
+        <h3 className="card-title">{treino.name}</h3>
+        
+        {treino.description && (
+          <p className="card-description">{treino.description}</p>
+        )}
+
+        <div className="card-meta">
+          <div className="meta-item">
+            <FileText size={13} />
+            <span>{treino.exercises_count} exercícios</span>
+          </div>
+          <div className="meta-item">
+            <Clock size={13} />
+            <span>{treino.duration_minutes} min</span>
+          </div>
+        </div>
+
+        {/* Progress Bar (Alunos only) */}
+        {role !== 'personal' && (
+          <div className="card-progress">
+            <div className="progress-track">
+              <div 
+                className="progress-fill" 
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+            <div className="progress-info">
+              <TrendingUp size={12} />
+              <span>{progress}%</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* CTA Button */}
+      <button 
+        className={`card-cta ${role === 'personal' ? 'edit' : 'start'}`}
+        onClick={(e) => onActionClick(e, treino.id)}
+      >
+        {role === 'personal' ? (
+          <>
+            <Edit2 size={16} />
+            <span>Editar</span>
+          </>
+        ) : (
+          <>
+            <Play size={14} />
+            <span>Iniciar treino</span>
+          </>
+        )}
+        <ChevronRight size={16} className="cta-arrow" />
+      </button>
+    </div>
+  )
+}
 
 export default function TreinosPage() {
   const navigate = useNavigate()
@@ -13,6 +104,13 @@ export default function TreinosPage() {
   const [treinos, setTreinos] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
   const [progress, setProgress] = useState(0)
+  const [workoutProgress] = useState<Record<string, number>>(() => {
+    const prog: Record<string, number> = {}
+    workoutsData.forEach((_, i) => {
+      prog[String(i)] = Math.floor(Math.random() * 40 + 60)
+    })
+    return prog
+  })
 
   useEffect(() => {
     carregarTreinos()
@@ -92,10 +190,11 @@ export default function TreinosPage() {
 
   return (
     <div className="treinos-page">
+      {/* Header */}
       <div className="treinos-header">
-        <div className="treinos-title">
-          <h3>Meus Treinos</h3>
-          <span className="treinos-count">{treinos.length} treinos</span>
+        <div className="header-content">
+          <h1 className="page-title">Meus Treinos</h1>
+          <span className="page-subtitle">{treinos.length} treinos disponíveis</span>
         </div>
         {role === 'personal' && (
           <button className="btn-novo" onClick={() => navigate('/treinos/criar')}>
@@ -105,6 +204,7 @@ export default function TreinosPage() {
         )}
       </div>
 
+      {/* Loading / Empty / List */}
       {loading ? (
         <>
           <div className="loading-progress">
@@ -117,10 +217,10 @@ export default function TreinosPage() {
         </>
       ) : treinos.length === 0 ? (
         <div className="treinos-empty">
-          <div className="empty-illustration">
-            <Dumbbell size={64} />
+          <div className="empty-icon-wrapper">
+            <Dumbbell size={48} />
           </div>
-          <p>Nenhum treino encontrado</p>
+          <h3>Nenhum treino encontrado</h3>
           <span>Crie seu primeiro treino para começar sua jornada fitness</span>
           {role === 'personal' && (
             <button className="btn-criar" onClick={() => navigate('/treinos/criar')}>
@@ -130,80 +230,17 @@ export default function TreinosPage() {
           )}
         </div>
       ) : (
-        <div className="treinos-grid">
+        <div className="treinos-list">
           {treinos.map((treino, index) => (
-            <div 
-              key={treino.id} 
-              className={`treino-card ${role !== 'personal' ? 'clickable' : ''}`}
-              style={{ animationDelay: `${index * 0.05}s` }}
-              onClick={() => handleCardClick(treino.id)}
-            >
-              <div className="treino-card-content">
-                <div className="treino-card-header">
-                  <div className="treino-icon-wrapper">
-                    <Dumbbell size={24} />
-                  </div>
-                </div>
-
-                <div className="treino-card-body">
-                  <h4 className="treino-name">{treino.name}</h4>
-                  <span 
-                    className="treino-level"
-                    style={{ background: getLevelColor(treino.level) }}
-                  >
-                    {getLevelLabel(treino.level)}
-                  </span>
-                </div>
-
-                {treino.description && (
-                  <p className="treino-description">{treino.description}</p>
-                )}
-
-                <div className="treino-card-meta">
-                  <div className="treino-meta-item">
-                    <FileText size={14} />
-                    <span>{treino.exercises_count} exercícios</span>
-                  </div>
-                  <div className="treino-meta-item">
-                    <Clock size={14} />
-                    <span>{treino.duration_minutes} min</span>
-                  </div>
-                </div>
-
-                {role !== 'personal' && (
-                  <div className="treino-progress">
-                    <div className="treino-progress-bar">
-                      <div 
-                        className="treino-progress-fill" 
-                        style={{ width: `${Math.random() * 60 + 20}%` }}
-                      />
-                    </div>
-                    <span className="treino-progress-text">
-                      <TrendingUp size={12} />
-                      {Math.floor(Math.random() * 40 + 60)}%
-                    </span>
-                  </div>
-                )}
-              </div>
-
-              <button 
-                className={`treino-card-action ${role === 'personal' ? 'edit' : 'start'}`}
-                onClick={(e) => handleActionClick(e, treino.id)}
-              >
-                {role === 'personal' ? (
-                  <>
-                    <Edit2 size={16} />
-                    <span>Editar treino</span>
-                  </>
-                ) : (
-                  <>
-                    <Play size={14} />
-                    <span>Iniciar treino</span>
-                  </>
-                )}
-                <ChevronRight size={16} />
-              </button>
-            </div>
+            <WorkoutCard
+              key={treino.id}
+              treino={treino}
+              index={index}
+              role={role || 'aluno'}
+              progress={workoutProgress[treino.id] || Math.floor(Math.random() * 40 + 60)}
+              onCardClick={handleCardClick}
+              onActionClick={handleActionClick}
+            />
           ))}
         </div>
       )}

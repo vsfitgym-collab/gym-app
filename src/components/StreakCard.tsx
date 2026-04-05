@@ -1,8 +1,9 @@
+import { memo } from 'react'
 import { Flame, Trophy, Calendar, TrendingUp } from 'lucide-react'
 import { getStreakData, getStreakMessage, getStreakLevel } from '../lib/streakManager'
 import './StreakCard.css'
 
-export default function StreakCard() {
+const StreakCard = memo(function StreakCard() {
   const streakData = getStreakData()
   const level = getStreakLevel(streakData.currentStreak)
   const message = getStreakMessage(streakData.currentStreak)
@@ -80,4 +81,6 @@ export default function StreakCard() {
       </div>
     </div>
   )
-}
+})
+
+export default StreakCard
