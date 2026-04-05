@@ -1,0 +1,4 @@
+/* Import theme */
+@import './theme.css';
+
+/* Legacy support - components that need specific overrides */
