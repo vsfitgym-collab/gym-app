@@ -24,25 +24,22 @@ export function useSubscription(): UseSubscriptionReturn {
   const { user } = useAuth()
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [currentPlan, setCurrentPlan] = useState<Plan>('free')
-  const [loading, setLoading] = useState(true)
+  const [loading, setLoading] = useState(false)
 
   const loadData = useCallback(async () => {
-    if (!user) {
-      setLoading(false)
-      return
-    }
-    
     setLoading(true)
     try {
-      const [sub, plan] = await Promise.all([
-        getSubscription(user.id),
-        getPlan(user.id),
-      ])
-      
-      setSubscription(sub)
-      setCurrentPlan(plan)
+      if (user) {
+        const [sub, plan] = await Promise.all([
+          getSubscription(user.id),
+          getPlan(user.id),
+        ])
+        
+        setSubscription(sub)
+        setCurrentPlan(plan || 'free')
+      }
     } catch (error) {
-      console.error('Erro ao carregar assinatura:', error)
+      console.warn('useSubscription error (non-critical):', error)
     } finally {
       setLoading(false)
     }

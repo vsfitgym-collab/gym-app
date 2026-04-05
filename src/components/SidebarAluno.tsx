@@ -1,4 +1,5 @@
-import { NavLink } from 'react-router-dom'
+import { useState } from 'react'
+import { NavLink, useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { Dumbbell, Home, MessageCircle, Users, DollarSign, LogOut, Target, Trophy, Crown } from 'lucide-react'
 import { useSubscription } from '../hooks/useSubscription'
@@ -32,10 +33,24 @@ interface SidebarProps {
 export default function SidebarAluno({ isOpen, onClose }: SidebarProps) {
   const { user, signOut, role } = useAuth()
   const { isPremium } = useSubscription()
+  const navigate = useNavigate()
+  const [loggingOut, setLoggingOut] = useState(false)
   const navItems = role === 'personal' ? navItemsPersonal : navItemsAluno
   
   const userName = user?.email?.split('@')[0] || 'Usuário'
   const userInitial = userName.charAt(0).toUpperCase()
+
+  const handleLogout = async () => {
+    setLoggingOut(true)
+    try {
+      await signOut()
+      navigate('/login', { replace: true })
+    } catch (error) {
+      console.error('Erro ao sair:', error)
+    } finally {
+      setLoggingOut(false)
+    }
+  }
 
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
@@ -82,9 +97,13 @@ export default function SidebarAluno({ isOpen, onClose }: SidebarProps) {
       </nav>
 
       <div className="sidebar-footer">
-        <button className="logout-btn" onClick={signOut}>
+        <button 
+          className="logout-btn" 
+          onClick={handleLogout}
+          disabled={loggingOut}
+        >
           <LogOut className="logout-icon" size={18} />
-          <span>Sair da conta</span>
+          <span>{loggingOut ? 'Saindo...' : 'Sair da conta'}</span>
         </button>
         <div className="sidebar-copyright">
           © 2026 VSFit Gym

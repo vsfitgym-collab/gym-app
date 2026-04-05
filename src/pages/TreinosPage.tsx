@@ -103,7 +103,7 @@ export default function TreinosPage() {
   const { role } = useAuth()
   const [treinos, setTreinos] = useState<Workout[]>([])
   const [loading, setLoading] = useState(true)
-  const [progress, setProgress] = useState(0)
+  const [error, setError] = useState<string | null>(null)
   const [workoutProgress] = useState<Record<string, number>>(() => {
     const prog: Record<string, number> = {}
     workoutsData.forEach((_, i) => {
@@ -118,30 +118,30 @@ export default function TreinosPage() {
 
   const carregarTreinos = async () => {
     try {
-      setProgress(20)
+      setLoading(true)
+      setError(null)
+      
+      console.log('Carregando treinos...')
       
       const { data, error } = await supabase
         .from('workouts')
         .select('*')
         .order('created_at', { ascending: false })
 
-      setProgress(40)
+      console.log('Workouts data:', data, 'Error:', error)
 
       if (error) {
+        console.error('Erro ao carregar workouts:', error)
+        setError(error.message)
         setTreinos(workoutsData)
-        setProgress(100)
-        setLoading(false)
         return
       }
 
       if (!data || data.length === 0) {
+        console.log('Nenhum treino encontrado, usando dados locais')
         setTreinos(workoutsData)
-        setProgress(100)
-        setLoading(false)
         return
       }
-      
-      setProgress(60)
       
       const workoutsWithCount = await Promise.all(
         data.map(async (treino) => {
@@ -156,20 +156,20 @@ export default function TreinosPage() {
             description: treino.description || '',
             duration_minutes: treino.duration_minutes || 45,
             exercises_count: count || 0,
-            level: (treino.level as Workout['level']) || 'intermediario',
+            level: 'intermediario' as const,
             icon: '💪'
           }
         })
       )
       
-      setProgress(90)
       setTreinos(workoutsWithCount)
-      setProgress(100)
-    } catch (error) {
+      console.log('Treinos carregados:', workoutsWithCount.length)
+    } catch (err) {
+      console.error('Erro ao carregar treinos:', err)
+      setError('Erro ao carregar treinos')
       setTreinos(workoutsData)
-      setProgress(100)
     } finally {
-      setTimeout(() => setLoading(false), 300)
+      setLoading(false)
     }
   }
 
@@ -206,15 +206,15 @@ export default function TreinosPage() {
 
       {/* Loading / Empty / List */}
       {loading ? (
-        <>
-          <div className="loading-progress">
-            <div 
-              className="loading-progress-bar" 
-              style={{ width: `${progress}%` }}
-            />
+        <SkeletonList count={4} />
+      ) : error ? (
+        <div className="treinos-empty">
+          <div className="empty-icon-wrapper">
+            <Dumbbell size={48} />
           </div>
-          <SkeletonList count={4} />
-        </>
+          <h3>Erro ao carregar</h3>
+          <span>{error}</span>
+        </div>
       ) : treinos.length === 0 ? (
         <div className="treinos-empty">
           <div className="empty-icon-wrapper">

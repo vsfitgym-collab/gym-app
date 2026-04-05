@@ -33,21 +33,28 @@ export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): 
     if (!currentUserId || !otherUserId) return
 
     setLoading(true)
-    const { data } = await supabase
+    console.log('Carregando mensagens entre', currentUserId, 'e', otherUserId)
+    
+    const { data, error } = await supabase
       .from('messages')
       .select('*')
       .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${currentUserId})`)
       .order('created_at', { ascending: true })
+    
+    console.log('Mensagens:', data, 'Erro:', error)
     
     if (data) setMessages(data)
     setLoading(false)
   }, [currentUserId, otherUserId])
 
   const loadAlunos = useCallback(async () => {
-    const { data } = await supabase
+    console.log('Carregando lista de alunos...')
+    const { data, error } = await supabase
       .from('profiles')
       .select('id, name, email')
       .eq('role', 'aluno')
+    
+    console.log('Alunos:', data, 'Erro:', error)
     
     if (data) {
       setConversations(data.map(p => ({

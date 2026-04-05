@@ -14,16 +14,21 @@ interface UsePWAResult {
   isInstalled: boolean
   isOffline: boolean
   isUpdateAvailable: boolean
+  showInstallBanner: boolean
   promptInstall: () => Promise<void>
+  dismissInstallBanner: () => void
   updateApp: () => void
   dismissUpdate: () => void
 }
+
+const PWA_DISMISSED_KEY = 'pwa-install-dismissed'
 
 export function usePWA(): UsePWAResult {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null)
   const [isInstalled, setIsInstalled] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
   const [isUpdateAvailable, setIsUpdateAvailable] = useState(false)
+  const [showInstallBanner, setShowInstallBanner] = useState(false)
   const [serviceWorkerRegistration, setServiceWorkerRegistration] = useState<ServiceWorkerRegistration | null>(null)
 
   useEffect(() => {
@@ -32,6 +37,12 @@ export function usePWA(): UsePWAResult {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches
       || (window.navigator as { standalone?: boolean }).standalone === true
     setIsInstalled(isStandalone)
+
+    const wasDismissed = localStorage.getItem(PWA_DISMISSED_KEY) === 'true'
+    
+    if (!isStandalone && !wasDismissed) {
+      setShowInstallBanner(true)
+    }
 
     const handleOnline = () => setIsOffline(false)
     const handleOffline = () => setIsOffline(true)
@@ -100,7 +111,14 @@ export function usePWA(): UsePWAResult {
 
     console.log('[PWA] Install prompt result:', outcome)
     setDeferredPrompt(null)
+    setShowInstallBanner(false)
+    localStorage.removeItem(PWA_DISMISSED_KEY)
   }, [deferredPrompt])
+
+  const dismissInstallBanner = useCallback(() => {
+    setShowInstallBanner(false)
+    localStorage.setItem(PWA_DISMISSED_KEY, 'true')
+  }, [])
 
   const updateApp = useCallback(() => {
     if (serviceWorkerRegistration) {
@@ -118,7 +136,9 @@ export function usePWA(): UsePWAResult {
     isInstalled,
     isOffline,
     isUpdateAvailable,
+    showInstallBanner: showInstallBanner && !isInstalled,
     promptInstall,
+    dismissInstallBanner,
     updateApp,
     dismissUpdate
   }

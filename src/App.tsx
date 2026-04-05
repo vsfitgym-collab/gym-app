@@ -1,14 +1,14 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
-import { AuthProvider, useAuth } from './context/AuthContext'
+import { useAuth } from './context/AuthContext'
 import LayoutAluno from './components/LayoutAluno'
 import LayoutPersonal from './components/LayoutPersonal'
-import { PWANotifications } from './components/PWAComponents'
 import LoginPage from './pages/auth/LoginPage'
 import RegisterPage from './pages/auth/RegisterPage'
 import { initNotifications } from './lib/notificationManager'
 import './styles/theme.css'
 import './index.css'
 import { lazy, Suspense } from 'react'
+import type { ReactNode } from 'react'
 
 initNotifications()
 
@@ -27,18 +27,32 @@ const PendingPaymentsPage = lazy(() => import('./pages/PendingPaymentsPage'))
 
 function LoadingScreen() {
   return (
-    <div className="flex items-center justify-center min-h-screen flex-col gap-4">
+    <div style={{ 
+      display: 'flex', 
+      flexDirection: 'column',
+      alignItems: 'center', 
+      justifyContent: 'center', 
+      minHeight: '100vh',
+      backgroundColor: '#0a0a0f',
+      color: '#fff'
+    }}>
       <div style={{ fontSize: '3rem' }}>🏋️</div>
-      <div className="text-secondary">Carregando...</div>
+      <div style={{ color: '#a0a0b0', marginTop: '1rem' }}>Carregando...</div>
     </div>
   )
 }
 
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
+function ProtectedRoute({ children }: { children: ReactNode }) {
   const { user, loading } = useAuth()
   
-  if (loading) return <LoadingScreen />
-  if (!user) return <Navigate to="/login" replace />
+  if (loading) {
+    return <LoadingScreen />
+  }
+  
+  if (!user) {
+    return <Navigate to="/login" replace />
+  }
+  
   return <>{children}</>
 }
 
@@ -83,11 +97,10 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <BrowserRouter>
-        <PWANotifications />
+    <BrowserRouter>
+      <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0f' }}>
         <AppRoutes />
-      </BrowserRouter>
-    </AuthProvider>
+      </div>
+    </BrowserRouter>
   )
 }

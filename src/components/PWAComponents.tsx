@@ -1,28 +1,46 @@
-import { Download, X } from 'lucide-react'
+import { Download, X, Smartphone } from 'lucide-react'
+import { useLocation } from 'react-router-dom'
 import { usePWA } from '../hooks/usePWA'
 import './PWAComponents.css'
 
-export function PWAInstallPrompt() {
-  const { isInstallable, promptInstall } = usePWA()
+export function PWAInstallBanner() {
+  const location = useLocation()
+  const { showInstallBanner, promptInstall, dismissInstallBanner } = usePWA()
+  
+  const isAuthPage = location.pathname === '/login' || location.pathname === '/cadastro'
 
-  if (!isInstallable) return null
+  if (!showInstallBanner || isAuthPage) return null
 
   return (
-    <div className="pwa-prompt install-prompt">
-      <div className="pwa-prompt-icon">
-        <Download size={24} />
+    <div className="pwa-banner">
+      <div className="pwa-banner-content">
+        <div className="pwa-banner-icon">
+          <Smartphone size={20} />
+        </div>
+        <div className="pwa-banner-text">
+          <h4>Instalar App</h4>
+          <p>Adicione à tela inicial para acesso rápido</p>
+        </div>
+        <button 
+          className="pwa-banner-close" 
+          onClick={dismissInstallBanner}
+          aria-label="Fechar"
+        >
+          <X size={18} />
+        </button>
       </div>
-      <div className="pwa-prompt-content">
-        <h4>Instalar VSFit Gym</h4>
-        <p>Adicione à tela inicial para uma experiência completa</p>
-      </div>
-      <div className="pwa-prompt-actions">
-        <button onClick={promptInstall} className="pwa-btn-install">
+      <div className="pwa-banner-actions">
+        <button onClick={promptInstall} className="pwa-banner-btn-install">
+          <Download size={16} />
           Instalar
         </button>
       </div>
     </div>
   )
+}
+
+export function PWAInstallPrompt() {
+  return <PWAInstallBanner />
 }
 
 export function PWAOfflineNotice() {
@@ -47,7 +65,7 @@ export function PWAUpdateNotification() {
     <div className="pwa-update-notification">
       <div className="pwa-update-content">
         <h4>Nova versão disponível</h4>
-        <p>Atualize para получить as últimas melhorias</p>
+        <p>Atualize para obter as últimas melhorias</p>
       </div>
       <div className="pwa-update-actions">
         <button onClick={updateApp} className="pwa-btn-update">
@@ -64,7 +82,7 @@ export function PWAUpdateNotification() {
 export function PWANotifications() {
   return (
     <>
-      <PWAInstallPrompt />
+      <PWAInstallBanner />
       <PWAOfflineNotice />
       <PWAUpdateNotification />
     </>

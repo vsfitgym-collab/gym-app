@@ -34,10 +34,16 @@
   
   html, body, #root {
     height: 100%;
+    min-height: 100vh;
     font-family: var(--font-family-sans);
-    background: linear-gradient(180deg, var(--color-bg-primary) 0%, #0f0f18 100%);
+    background-color: #0a0a0f;
     color: var(--color-text-primary);
     -webkit-font-smoothing: antialiased;
+  }
+  
+  body {
+    background: linear-gradient(180deg, #0a0a0f 0%, #0f0f18 100%) !important;
+    min-height: 100vh;
   }
   
   ::-webkit-scrollbar {
@@ -273,6 +279,13 @@
 .app-layout {
   display: flex;
   min-height: 100vh;
+  background: #0a0a0f;
+}
+
+.layout {
+  display: flex;
+  min-height: 100vh;
+  background: #0a0a0f;
 }
 
 .content {
@@ -281,6 +294,14 @@
   flex-direction: column;
   min-height: 100vh;
   width: 100%;
+  background: #0a0a0f;
+}
+
+.page-content {
+  flex: 1;
+  padding: 1.5rem;
+  background: #0a0a0f;
+  min-height: calc(100vh - 70px);
 }
 
 @media (min-width: 1025px) {

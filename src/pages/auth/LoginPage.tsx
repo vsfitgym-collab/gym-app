@@ -20,10 +20,10 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const { error } = await signIn(email, password)
+    const result = await signIn(email, password)
 
-    if (error) {
-      setError(error.message === 'Invalid login credentials' ? 'Email ou senha incorretos' : error.message)
+    if (result.error) {
+      setError(result.cleanMessage || 'Erro ao fazer login')
       setLoading(false)
     } else {
       navigate(from, { replace: true })

@@ -65,8 +65,11 @@ export const getSubscription = async (userId: string): Promise<Subscription | nu
       .eq('user_id', userId)
       .single()
 
-    if (error && error.code !== 'PGRST116') throw error
-    return data
+    if (error && error.code !== 'PGRST116') {
+      console.warn('Subscription fetch error (non-critical):', error.message)
+      return null
+    }
+    return data || null
   } catch {
     return null
   }
@@ -86,16 +89,20 @@ export const isPremium = async (userId: string): Promise<boolean> => {
 }
 
 export const getPlan = async (userId: string): Promise<Plan> => {
-  const sub = await getSubscription(userId)
-  if (!sub) return 'free'
-  
-  if (sub.status === 'trial' && sub.trial_ends_at) {
-    if (new Date(sub.trial_ends_at) > new Date()) return 'free'
+  try {
+    const sub = await getSubscription(userId)
+    if (!sub) return 'free'
+    
+    if (sub.status === 'trial' && sub.trial_ends_at) {
+      if (new Date(sub.trial_ends_at) > new Date()) return 'free'
+    }
+    
+    if (sub.status === 'active') return sub.plan
+    
+    return 'free'
+  } catch {
+    return 'free'
   }
-  
-  if (sub.status === 'active') return sub.plan
-  
-  return 'free'
 }
 
 export const subscribeToPlan = async (userId: string, plan: Plan): Promise<{ success: boolean; error?: string }> => {

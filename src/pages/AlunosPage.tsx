@@ -27,11 +27,17 @@ export default function AlunosPage() {
 
   const carregarAlunos = async () => {
     try {
+      setLoading(true)
+      setError(null)
+      console.log('Carregando alunos...')
+      
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
-        .select('id, email, role, name, created_at, avatar_url')
+        .select('id, name, role, plan, plan_expires_at, created_at')
         .eq('role', 'aluno')
         .order('created_at', { ascending: false })
+
+      console.log('Profiles data:', profilesData, 'Error:', profilesError)
 
       if (profilesError) {
         console.error('Erro Supabase:', profilesError)
@@ -40,33 +46,31 @@ export default function AlunosPage() {
         return
       }
 
-      const formattedAlunos: Aluno[] = []
-
-      for (const profile of profilesData || []) {
-        const { data: subData } = await supabase
-          .from('subscriptions')
-          .select('plan, status')
-          .eq('user_id', profile.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .single()
-
-        const planName = subData?.plan || 'free'
-        const planStatus = subData?.status || 'inactive'
-
-        formattedAlunos.push({
-          id: profile.id,
-          nome: profile.name || profile.email?.split('@')[0] || 'Aluno',
-          email: profile.email || '',
-          plano: planName === 'free' ? 'Free' : planName === 'basic' ? 'Básico' : 'Premium',
-          planStatus: planStatus,
-          avatar_url: profile.avatar_url || null,
-          created_at: profile.created_at || null,
-          status: planStatus === 'active' ? 'ativo' : 'inativo',
-        })
+      if (!profilesData || profilesData.length === 0) {
+        console.log('Nenhum aluno encontrado')
+        setAlunos([])
+        setLoading(false)
+        return
       }
 
+      const formattedAlunos: Aluno[] = profilesData.map(profile => {
+        const planName = profile.plan || 'free'
+        const isExpired = profile.plan_expires_at && new Date(profile.plan_expires_at) < new Date()
+        const planStatus = isExpired ? 'inactive' : 'active'
+
+        return {
+          id: profile.id,
+          nome: profile.name || 'Aluno',
+          email: '',
+          plano: planName === 'free' ? 'Free' : planName === 'basic' ? 'Básico' : 'Premium',
+          planStatus: planStatus,
+          created_at: profile.created_at || null,
+          status: planStatus === 'active' ? 'ativo' : 'inativo',
+        }
+      })
+
       setAlunos(formattedAlunos)
+      console.log('Alunos carregados:', formattedAlunos.length)
     } catch (error: any) {
       console.error('Erro ao carregar alunos:', error)
       setError(error.message)
