@@ -12,13 +12,14 @@ import {
   ArrowLeft,
   Shield,
   Copy,
-  QrCode,
-  CreditCard,
-  FileText,
   CheckCircle2,
+  QrCode,
+  Clock,
+  AlertCircle,
 } from 'lucide-react'
-import { subscribeToPlan, startTrial, type Plan } from '../lib/subscriptionService'
+import { type Plan } from '../lib/subscriptionService'
 import { useSubscription } from '../hooks/useSubscription'
+import { createPixPayment, pollPaymentStatus } from '../lib/paymentService'
 import './Planos.css'
 
 const plans = [
@@ -93,7 +94,12 @@ interface ChatMessage {
   id: number
   role: 'bot' | 'user'
   text: string
-  paymentMethod?: string
+  paymentData?: {
+    qr_code_base64?: string
+    qr_code?: string
+    payment_id?: number
+    status?: string
+  }
 }
 
 export default function PlanosPage() {
@@ -104,33 +110,36 @@ export default function PlanosPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [processing, setProcessing] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<string | null>(null)
-  const [paymentConfirmed, setPaymentConfirmed] = useState(false)
   const [chatStep, setChatStep] = useState<'greeting' | 'plan_selected' | 'payment' | 'confirming' | 'done'>('greeting')
-  const [cardNumber, setCardNumber] = useState('')
-  const [cardExpiry, setCardExpiry] = useState('')
-  const [cardName, setCardName] = useState('')
-  const [cardCvv, setCardCvv] = useState('')
+  const [paymentId, setPaymentId] = useState<number | null>(null)
+  const [paymentStatus, setPaymentStatus] = useState<string>('pending')
+  const [pollingActive, setPollingActive] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
-  const addMessage = (role: 'bot' | 'user', text: string, paymentMethod?: string) => {
-    setMessages(prev => [...prev, { id: Date.now(), role, text, paymentMethod }])
+  useEffect(() => {
+    return () => {
+      if (pollingRef.current) clearInterval(pollingRef.current)
+    }
+  }, [])
+
+  const addMessage = (role: 'bot' | 'user', text: string, paymentData?: ChatMessage['paymentData']) => {
+    setMessages(prev => [...prev, { id: Date.now(), role, text, paymentData }])
   }
 
   const startAssistant = (planId: Plan) => {
     setSelectedPlan(planId)
     setShowAssistant(true)
     setMessages([])
-    setPaymentMethod(null)
-    setPaymentConfirmed(false)
-    setCardNumber('')
-    setCardExpiry('')
-    setCardName('')
-    setCardCvv('')
+    setChatStep('greeting')
+    setPaymentId(null)
+    setPaymentStatus('pending')
+    setPollingActive(false)
+    if (pollingRef.current) clearInterval(pollingRef.current)
 
     setTimeout(() => {
       addMessage('bot', `Olá! 👋 Eu sou o assistente de pagamento da VSFit Gym.
@@ -139,28 +148,78 @@ Posso te ajudar a escolher o melhor plano e finalizar sua assinatura. Qual plano
     }, 500)
   }
 
-  const handlePayment = async () => {
-    if (!user || !selectedPlan) return
+  const generatePixPayment = async () => {
+    if (!selectedPlan || !user) return
+
     setProcessing(true)
+    setChatStep('confirming')
 
-    // Simulate payment processing
-    await new Promise(resolve => setTimeout(resolve, 2500))
+    const result = await createPixPayment(selectedPlan)
 
-    if (selectedPlan === 'free') {
-      await startTrial(user.id, 7)
-    } else {
-      await subscribeToPlan(user.id, selectedPlan)
-    }
-    await refresh()
+    if (result.success && result.qr_code_base64) {
+      setPaymentId(result.payment_id)
+      setPaymentStatus('pending')
 
-    setProcessing(false)
-    setPaymentConfirmed(true)
+      addMessage('bot', `Perfeito! 📱 Aqui está o QR Code PIX para pagamento:
 
-    addMessage('bot', `🎉 **Assinatura ativada com sucesso!**
+**Plano:** ${selectedPlan === 'basic' ? 'Básico' : 'Premium'}
+**Valor:** R$ ${selectedPlan === 'basic' ? '14,90' : '29,90'}
 
-Seu plano **${selectedPlan === 'basic' ? 'Básico' : selectedPlan === 'premium' ? 'Premium' : 'Free'}** já está ativo. Aproveite todos os recursos!
+Escaneie o QR Code abaixo com seu app bancário ou use o PIX Copia e Cola.
+
+⏳ Aguardando confirmação do pagamento...`, {
+        qr_code_base64: result.qr_code_base64,
+        qr_code: result.qr_code,
+        payment_id: result.payment_id,
+        status: 'pending',
+      })
+
+      // Start polling for payment status
+      setPollingActive(true)
+      pollPaymentStatus(
+        result.payment_id,
+        async (status) => {
+          setPaymentStatus(status.status)
+
+          if (status.status === 'approved') {
+            setPollingActive(false)
+            setChatStep('done')
+            setProcessing(false)
+
+            // Refresh subscription data
+            await refresh()
+
+            addMessage('bot', `🎉 **Pagamento confirmado!**
+
+Seu plano **${selectedPlan === 'basic' ? 'Básico' : 'Premium'}** foi ativado automaticamente!
+
+✅ Acesso liberado
+✅ Todos os recursos disponíveis
+✅ Próxima cobrança em 30 dias
 
 Qualquer dúvida, é só me chamar. Bons treinos! 💪`)
+          } else if (status.status === 'rejected' || status.status === 'cancelled') {
+            setPollingActive(false)
+            setProcessing(false)
+
+            addMessage('bot', `❌ **Pagamento não confirmado**
+
+O pagamento foi ${status.status === 'rejected' ? 'recusado' : 'cancelado'}.
+
+Tente novamente com outro método de pagamento ou entre em contato com o suporte.`)
+          }
+        },
+        60,
+        3000
+      )
+    } else {
+      setProcessing(false)
+      addMessage('bot', `❌ **Erro ao gerar PIX**
+
+Não foi possível gerar o pagamento. Verifique sua conexão e tente novamente.
+
+Erro: ${result.error || 'Desconhecido'}`)
+    }
   }
 
   const handleUserMessage = async (text: string) => {
@@ -220,13 +279,11 @@ Digite o nome do plano que te interessou.`), 800)
     } else if (chatStep === 'plan_selected') {
       if (lowerText.includes('sim') || lowerText.includes('quero') || lowerText.includes('ativar') || lowerText.includes('prosiga') || lowerText.includes('ok') || lowerText.includes('pode')) {
         setChatStep('payment')
-        setTimeout(() => addMessage('bot', `Ótimo! 💳 Escolha a forma de pagamento:
+        setTimeout(() => addMessage('bot', `Ótimo! 💳 O pagamento será via **PIX** (instantâneo).
 
-1. **PIX** - Pagamento instantâneo (QR Code)
-2. **Cartão de Crédito** - Parcelamento disponível
-3. **Boleto** - Vencimento em 3 dias
+**Plano:** ${selectedPlan === 'basic' ? 'Básico - R$ 14,90/mês' : 'Premium - R$ 29,90/mês'}
 
-Digite o método desejado.`), 800)
+Clique em **"Gerar PIX"** para criar o QR Code.`), 800)
       } else if (lowerText.includes('trocar') || lowerText.includes('outro') || lowerText.includes('mudar')) {
         setChatStep('greeting')
         setTimeout(() => addMessage('bot', `Sem problema! Qual plano você prefere?
@@ -238,38 +295,8 @@ Digite o método desejado.`), 800)
         setTimeout(() => addMessage('bot', `Deseja prosseguir com a assinatura do plano ${selectedPlan === 'free' ? 'Free' : selectedPlan === 'basic' ? 'Básico' : 'Premium'}? Digite **sim** para continuar.`), 800)
       }
     } else if (chatStep === 'payment') {
-      if (lowerText.includes('pix')) {
-        setPaymentMethod('pix')
-        setChatStep('confirming')
-        const planPrice = selectedPlan === 'basic' ? '14,90' : selectedPlan === 'premium' ? '29,90' : '0'
-        setTimeout(() => addMessage('bot', `Perfeito! Aqui está o QR Code PIX para pagamento:
-
-**Plano:** ${selectedPlan === 'basic' ? 'Básico' : selectedPlan === 'premium' ? 'Premium' : 'Free'}
-**Valor:** R$ ${planPrice}
-
-Escaneie o QR Code abaixo com seu app bancário:`, 'pix'), 800)
-      } else if (lowerText.includes('cartão') || lowerText.includes('cartao') || lowerText.includes('credito')) {
-        setPaymentMethod('card')
-        setChatStep('confirming')
-        setTimeout(() => addMessage('bot', `Ótimo! 💳 Preencha os dados do cartão:
-
-**Plano:** ${selectedPlan === 'basic' ? 'Básico' : selectedPlan === 'premium' ? 'Premium' : 'Free'}
-**Valor:** R$ ${selectedPlan === 'basic' ? '14,90' : selectedPlan === 'premium' ? '29,90' : '0'}/mês
-
-Digite os dados do cartão abaixo ou clique em "Confirmar" para prosseguir.`, 'card'), 800)
-      } else if (lowerText.includes('boleto')) {
-        setPaymentMethod('boleto')
-        setChatStep('confirming')
-        setTimeout(() => addMessage('bot', `Perfeito! Aqui está o boleto para pagamento:
-
-**Plano:** ${selectedPlan === 'basic' ? 'Básico' : selectedPlan === 'premium' ? 'Premium' : 'Free'}
-**Valor:** R$ ${selectedPlan === 'basic' ? '14,90' : selectedPlan === 'premium' ? '29,90' : '0'}
-**Vencimento:** 3 dias úteis
-
-Código de barras:
-**23793.38128 60000.000003 00000.000400 1 84340000001490
-
-O boleto será compensado em até 3 dias úteis após o pagamento. Clique em "Já paguei" para confirmar.`, 'boleto'), 800)
+      if (lowerText.includes('gerar') || lowerText.includes('pix') || lowerText.includes('qr') || lowerText.includes('pagar') || lowerText.includes('sim')) {
+        await generatePixPayment()
       } else if (lowerText.includes('trocar') || lowerText.includes('outro')) {
         setChatStep('plan_selected')
         setTimeout(() => addMessage('bot', `Sem problema! Qual plano você prefere?
@@ -278,31 +305,29 @@ O boleto será compensado em até 3 dias úteis após o pagamento. Clique em "J�
 ⚡ **Básico** - R$ 14,90/mês
 👑 **Premium** - R$ 29,90/mês`), 800)
       } else {
-        setTimeout(() => addMessage('bot', `Escolha uma forma de pagamento:
-
-1. **PIX** - Pagamento instantâneo
-2. **Cartão de Crédito**
-3. **Boleto`), 800)
+        setTimeout(() => addMessage('bot', `Clique em **"Gerar PIX"** para criar o QR Code e realizar o pagamento.`), 800)
       }
     } else if (chatStep === 'confirming') {
-      if (lowerText.includes('já paguei') || lowerText.includes('ja paguei') || lowerText.includes('confirmar') || lowerText.includes('pagar') || lowerText.includes('sim')) {
-        setChatStep('done')
-        await handlePayment()
-      } else if (lowerText.includes('trocar') || lowerText.includes('outro')) {
-        setPaymentMethod(null)
-        setChatStep('payment')
-        setTimeout(() => addMessage('bot', `Qual forma de pagamento prefere?
+      if (lowerText.includes('já paguei') || lowerText.includes('ja paguei') || lowerText.includes('confirmar')) {
+        addMessage('bot', `⏳ Verificando pagamento...
 
-1. **PIX** - Pagamento instantâneo
-2. **Cartão de Crédito**
-3. **Boleto`), 800)
-      } else {
-        setTimeout(() => addMessage('bot', `Para confirmar o pagamento, digite **já paguei** ou **confirmar**.`), 800)
+Aguarde enquanto confirmamos o recebimento. Isso pode levar alguns segundos.`)
+        
+        // Force a status check
+        if (paymentId) {
+          const { checkPaymentStatus } = await import('../lib/paymentService')
+          const status = await checkPaymentStatus(paymentId)
+          if (status && status.status === 'approved') {
+            setChatStep('done')
+            await refresh()
+            addMessage('bot', `🎉 **Pagamento confirmado!**
+
+Seu plano foi ativado automaticamente! Aproveite! 💪`)
+          }
+        }
       }
     } else if (chatStep === 'done') {
-      setTimeout(() => {
-        setShowAssistant(false)
-      }, 2000)
+      setTimeout(() => setShowAssistant(false), 2000)
     }
   }
 
@@ -446,127 +471,58 @@ O boleto será compensado em até 3 dias úteis após o pagamento. Clique em "J�
                     })}
 
                     {/* PIX QR Code */}
-                    {msg.paymentMethod === 'pix' && (
+                    {msg.paymentData?.qr_code_base64 && (
                       <div className="payment-qr-code">
-                        <div className="qr-placeholder">
-                          <QrCode size={120} />
-                          <span>QR Code PIX</span>
-                        </div>
-                        <div className="pix-payload">
-                          <span className="pix-label">PIX Copia e Cola:</span>
-                          <code className="pix-code">00020126580014br.gov.bcb.pix0136a629532e-7693-4846-b0f3-7772b5e5f1235204000053039865405{selectedPlan === 'basic' ? '14.90' : selectedPlan === 'premium' ? '29.90' : '0.00'}5802BR5913VSFIT_GYM6009SAO_PAULO62070503***63041D3D</code>
-                          <button className="btn-copy" onClick={() => copyToClipboard('00020126580014br.gov.bcb.pix0136a629532e-7693-4846-b0f3-7772b5e5f123')}>
-                            <Copy size={14} />
-                            Copiar código
-                          </button>
-                        </div>
-                        <button className="btn-confirm-payment" onClick={() => handlePayment()}>
-                          <CheckCircle2 size={16} />
-                          Já fiz o pagamento
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Card Form */}
-                    {msg.paymentMethod === 'card' && (
-                      <div className="payment-card-form">
-                        <div className="card-input-group">
-                          <label><CreditCard size={14} /> Número do Cartão</label>
-                          <input
-                            type="text"
-                            placeholder="0000 0000 0000 0000"
-                            value={cardNumber}
-                            onChange={e => setCardNumber(e.target.value)}
-                            maxLength={19}
+                        <div className="qr-code-image">
+                          <img 
+                            src={`data:image/png;base64,${msg.paymentData.qr_code_base64}`} 
+                            alt="QR Code PIX" 
                           />
                         </div>
-                        <div className="card-input-group">
-                          <label>Nome no Cartão</label>
-                          <input
-                            type="text"
-                            placeholder="Nome como está no cartão"
-                            value={cardName}
-                            onChange={e => setCardName(e.target.value)}
-                          />
-                        </div>
-                        <div className="card-input-row">
-                          <div className="card-input-group">
-                            <label>Validade</label>
-                            <input
-                              type="text"
-                              placeholder="MM/AA"
-                              value={cardExpiry}
-                              onChange={e => setCardExpiry(e.target.value)}
-                              maxLength={5}
-                            />
+                        {msg.paymentData.qr_code && (
+                          <div className="pix-payload">
+                            <span className="pix-label">PIX Copia e Cola:</span>
+                            <code className="pix-code">{msg.paymentData.qr_code}</code>
+                            <button className="btn-copy" onClick={() => copyToClipboard(msg.paymentData!.qr_code!)}>
+                              <Copy size={14} />
+                              Copiar código
+                            </button>
                           </div>
-                          <div className="card-input-group">
-                            <label>CVV</label>
-                            <input
-                              type="text"
-                              placeholder="000"
-                              value={cardCvv}
-                              onChange={e => setCardCvv(e.target.value)}
-                              maxLength={4}
-                            />
-                          </div>
-                        </div>
-                        <button className="btn-confirm-payment" onClick={() => handlePayment()} disabled={processing}>
-                          {processing ? (
+                        )}
+                        <div className={`payment-status-indicator ${paymentStatus}`}>
+                          {paymentStatus === 'pending' && (
                             <>
-                              <Loader2 size={16} className="spinner" />
-                              Processando...
-                            </>
-                          ) : (
-                            <>
-                              <CreditCard size={16} />
-                              Confirmar Pagamento
+                              <Clock size={14} className="spinner" />
+                              <span>Aguardando pagamento...</span>
                             </>
                           )}
-                        </button>
-                      </div>
-                    )}
-
-                    {/* Boleto */}
-                    {msg.paymentMethod === 'boleto' && (
-                      <div className="payment-boleto">
-                        <div className="boleto-barcode">
-                          <FileText size={48} />
-                          <div className="barcode-lines">
-                            {Array.from({ length: 40 }).map((_, i) => (
-                              <div key={i} className={`barcode-line ${Math.random() > 0.5 ? 'thick' : 'thin'}`} />
-                            ))}
-                          </div>
-                          <code className="boleto-code">23793.38128 60000.000003 00000.000400 1 84340000001490</code>
-                        </div>
-                        <button className="btn-copy" onClick={() => copyToClipboard('23793381286000000000300000000400184340000001490')}>
-                          <Copy size={14} />
-                          Copiar código de barras
-                        </button>
-                        <button className="btn-confirm-payment" onClick={() => handlePayment()} disabled={processing}>
-                          {processing ? (
+                          {paymentStatus === 'approved' && (
                             <>
-                              <Loader2 size={16} className="spinner" />
-                              Verificando...
-                            </>
-                          ) : (
-                            <>
-                              <CheckCircle2 size={16} />
-                              Já paguei o boleto
+                              <CheckCircle2 size={14} />
+                              <span>Pagamento confirmado!</span>
                             </>
                           )}
-                        </button>
+                          {(paymentStatus === 'rejected' || paymentStatus === 'cancelled') && (
+                            <>
+                              <AlertCircle size={14} />
+                              <span>Pagamento {paymentStatus === 'rejected' ? 'recusado' : 'cancelado'}</span>
+                            </>
+                          )}
+                        </div>
+                        {pollingActive && (
+                          <p className="polling-note">🔄 Verificando automaticamente a cada 3 segundos...</p>
+                        )}
                       </div>
                     )}
                   </div>
                 </div>
               ))}
-              {processing && !messages.some(m => m.role === 'bot' && m.text.includes('Processando')) && (
+              {processing && !messages.some(m => m.role === 'bot' && m.paymentData?.qr_code_base64) && (
                 <div className="message bot">
                   <div className="message-avatar"><Bot size={14} /></div>
                   <div className="message-bubble processing">
                     <Loader2 size={16} className="spinner" />
-                    <span>Processando pagamento...</span>
+                    <span>Gerando PIX...</span>
                   </div>
                 </div>
               )}
@@ -589,14 +545,19 @@ O boleto será compensado em até 3 dias úteis após o pagamento. Clique em "J�
                   </>
                 )}
                 {chatStep === 'payment' && (
+                  <button onClick={() => handleUserMessage('Gerar PIX')} className="btn-generate-pix">
+                    <QrCode size={14} />
+                    Gerar PIX
+                  </button>
+                )}
+                {chatStep === 'confirming' && (
                   <>
-                    <button onClick={() => handleUserMessage('PIX')}>📱 PIX</button>
-                    <button onClick={() => handleUserMessage('Cartão de Crédito')}>💳 Cartão</button>
-                    <button onClick={() => handleUserMessage('Boleto')}>📄 Boleto</button>
+                    <button onClick={() => handleUserMessage('Já paguei')}>✅ Já paguei</button>
+                    <button onClick={() => handleUserMessage('Trocar plano')}>🔄 Trocar</button>
                   </>
                 )}
-                {(chatStep === 'confirming' || chatStep === 'done') && paymentMethod && (
-                  <button onClick={() => handleUserMessage('Confirmar')}>✅ Confirmar pagamento</button>
+                {chatStep === 'done' && (
+                  <button onClick={() => setShowAssistant(false)}>🏠 Voltar aos treinos</button>
                 )}
               </div>
               <div className="input-wrapper">
@@ -606,12 +567,12 @@ O boleto será compensado em até 3 dias úteis após o pagamento. Clique em "J�
                   onChange={e => setInputText(e.target.value)}
                   onKeyDown={e => e.key === 'Enter' && inputText.trim() && handleUserMessage(inputText.trim())}
                   placeholder="Digite sua mensagem..."
-                  disabled={processing || paymentConfirmed}
+                  disabled={processing || chatStep === 'done'}
                 />
                 <button
                   className="send-btn"
                   onClick={() => inputText.trim() && handleUserMessage(inputText.trim())}
-                  disabled={processing || paymentConfirmed || !inputText.trim()}
+                  disabled={processing || chatStep === 'done' || !inputText.trim()}
                 >
                   <Send size={16} />
                 </button>
