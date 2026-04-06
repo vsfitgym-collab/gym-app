@@ -26,26 +26,35 @@ export function useSubscription(): UseSubscriptionReturn {
   const { user } = useAuth()
   const [subscription, setSubscription] = useState<Subscription | null>(null)
   const [currentPlan, setCurrentPlan] = useState<Plan>('free')
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<Error | null>(null)
+
+  const userId = user?.id ?? null
 
   const loadData = useCallback(async () => {
+    if (!userId) {
+      setLoading(false)
+      return
+    }
+
     setLoading(true)
+    setError(null)
     try {
-      if (user) {
-        const [sub, plan] = await Promise.all([
-          getSubscription(user.id),
-          getPlan(user.id),
-        ])
-        
-        setSubscription(sub)
-        setCurrentPlan(plan || 'free')
-      }
-    } catch (error) {
+      const [sub, plan] = await Promise.all([
+        getSubscription(userId),
+        getPlan(userId),
+      ])
+      
+      setSubscription(sub)
+      setCurrentPlan(plan || 'free')
+    } catch (err) {
+      const error = err instanceof Error ? err : new Error(String(err))
+      setError(error)
       console.warn('useSubscription error (non-critical):', error)
     } finally {
       setLoading(false)
     }
-  }, [user])
+  }, [userId])
 
   useEffect(() => {
     loadData()

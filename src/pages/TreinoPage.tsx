@@ -40,17 +40,42 @@ export default function TreinoPage() {
   const [treinoNome, setTreinoNome] = useState('')
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [savedIndicator, setSavedIndicator] = useState(false)
+  const [isPersonal, setIsPersonal] = useState(false)
   const timerRef = useRef<number | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   useEffect(() => {
-    carregarTreino()
+    const checkRole = async () => {
+      if (!user) {
+        setIsPersonal(false)
+        return
+      }
+      try {
+        const { data } = await supabase
+          .from('profiles')
+          .select('role')
+          .eq('id', user.id)
+          .single()
+        setIsPersonal(data?.role === 'personal')
+      } catch {
+        setIsPersonal(false)
+      }
+    }
+    checkRole()
+  }, [user])
+
+  useEffect(() => {
+    if (user) {
+      carregarTreino()
+    } else {
+      setLoading(false)
+    }
     return () => {
       if (timerRef.current) clearInterval(timerRef.current)
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
     }
-  }, [id])
+  }, [id, user])
 
   const carregarTreino = async () => {
     if (!id) {
@@ -321,6 +346,24 @@ export default function TreinoPage() {
     )
   }
 
+  if (!user) {
+    return (
+      <div className="treino-fullscreen">
+        <div className="treino-loading">Acesso não autorizado</div>
+        <button className="btn-sair" onClick={() => navigate('/treinos')}>Voltar</button>
+      </div>
+    )
+  }
+
+  if (!user) {
+    return (
+      <div className="treino-fullscreen">
+        <div className="treino-loading">Acesso não autorizado</div>
+        <button className="btn-sair" onClick={() => navigate('/treinos')}>Voltar</button>
+      </div>
+    )
+  }
+
   if (treinoConcluido) {
     return (
       <div className="treino-fullscreen treino-concluido">
@@ -403,10 +446,12 @@ export default function TreinoPage() {
 
           {/* Action Buttons */}
           <div className="concluido-actions">
-            <button className="btn-cta-primary" onClick={reiniciarTreino}>
-              <RotateCcw size={18} />
-              <span>Novo Treino</span>
-            </button>
+            {isPersonal && (
+              <button className="btn-cta-primary" onClick={reiniciarTreino}>
+                <RotateCcw size={18} />
+                <span>Novo Treino</span>
+              </button>
+            )}
             <button className="btn-cta-secondary" onClick={sairTreino}>
               <span>Sair</span>
             </button>
@@ -468,10 +513,12 @@ export default function TreinoPage() {
               <>
                 <p className="proximo-label">Próximo:</p>
                 <h3 className="proximo-exercicio">{proximoEx}</h3>
-                <button className="btn-pular-descanso" onClick={pularDescanso}>
-                  <SkipForward size={18} />
-                  <span>Pular Descanso</span>
-                </button>
+                {isPersonal && (
+                  <button className="btn-pular-descanso" onClick={pularDescanso}>
+                    <SkipForward size={18} />
+                    <span>Pular Descanso</span>
+                  </button>
+                )}
               </>
             )}
           </div>
@@ -556,29 +603,35 @@ export default function TreinoPage() {
 
       {/* Bottom Fixed Actions */}
       <div className="treino-bottom-bar">
-        <div className="exercise-dots">
-          {exercicios.map((_, index) => (
-            <button
-              key={index}
-              className={`exercise-dot ${index === exercicioAtual ? 'active' : ''} ${index < exercicioAtual ? 'completed' : ''}`}
-              onClick={() => {
-                setExercicioAtual(index)
-                setSerieAtual(1)
-                ensureSession()
-                autoSaveProgress(index, 1)
-              }}
-            />
-          ))}
-        </div>
+        {isPersonal && (
+        {isPersonal && (
+          <div className="exercise-dots">
+            {exercicios.map((_, index) => (
+              <button
+                key={index}
+                className={`exercise-dot ${index === exercicioAtual ? 'active' : ''} ${index < exercicioAtual ? 'completed' : ''}`}
+                onClick={() => {
+                  setExercicioAtual(index)
+                  setSerieAtual(1)
+                  ensureSession()
+                  autoSaveProgress(index, 1)
+                }}
+              />
+            ))}
+          </div>
+        )}
+        )}
 
         <div className="action-buttons">
-          <button 
-            className="btn-nav" 
-            onClick={exercicioAnterior}
-            disabled={exercicioAtual === 0}
-          >
-            <ChevronLeft size={22} />
-          </button>
+          {isPersonal && (
+            <button 
+              className="btn-nav" 
+              onClick={exercicioAnterior}
+              disabled={exercicioAtual === 0}
+            >
+              <ChevronLeft size={22} />
+            </button>
+          )}
           
           <button className="btn-main-action" onClick={iniciarSerie}>
             {isUltimaSerie 
@@ -586,13 +639,15 @@ export default function TreinoPage() {
               : 'PRÓXIMA SÉRIE'}
           </button>
           
-          <button 
-            className="btn-nav" 
-            onClick={proximoExercicio}
-            disabled={isUltimoExercicio}
-          >
-            <ChevronRight size={22} />
-          </button>
+          {isPersonal && (
+            <button 
+              className="btn-nav" 
+              onClick={proximoExercicio}
+              disabled={isUltimoExercicio}
+            >
+              <ChevronRight size={22} />
+            </button>
+          )}
         </div>
       </div>
     </div>

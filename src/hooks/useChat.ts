@@ -66,7 +66,7 @@ export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): 
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, name, email')
+        .select('id, name')
         .eq('role', 'aluno')
       
       if (error) {
@@ -76,8 +76,8 @@ export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): 
         console.log('Chat: Alunos carregados:', data?.length || 0)
         setConversations(data?.map(p => ({
           id: p.id,
-          name: p.name || p.email?.split('@')[0] || 'Aluno',
-          email: p.email,
+          name: p.name || 'Aluno',
+          email: '',
           role: 'aluno'
         })) || [])
       }

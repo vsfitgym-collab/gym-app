@@ -34,28 +34,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [])
 
   const handleAuthChange = useCallback(async (newSession: Session | null) => {
-    if (newSession) {
-      setSession(newSession)
-      setUser(newSession.user)
+    try {
+      if (newSession) {
+        setSession(newSession)
+        setUser(newSession.user)
 
-      const userRole = await fetchUserRole(newSession.user.id, newSession.user.email)
-      setRole(userRole)
-      
-      try {
-        await supabase.from('profiles').upsert({
-          id: newSession.user.id,
-          name: newSession.user.email?.split('@')[0] || 'Usuario',
-          role: userRole
-        }, { onConflict: 'id' })
-      } catch (e) {
-        console.warn('Profile upsert error (non-critical):', e)
+        const userRole = await fetchUserRole(newSession.user.id, newSession.user.email)
+        setRole(userRole)
+        
+        try {
+          await supabase.from('profiles').upsert({
+            id: newSession.user.id,
+            name: newSession.user.email?.split('@')[0] || 'Usuario',
+            role: userRole
+          }, { onConflict: 'id' })
+        } catch (e) {
+          console.warn('Profile upsert error (non-critical):', e)
+        }
+      } else {
+        setSession(null)
+        setUser(null)
+        setRole('aluno')
       }
-    } else {
-      setSession(null)
-      setUser(null)
-      setRole('aluno')
+    } finally {
+      setLoading(false)
     }
-    setLoading(false)
   }, [fetchUserRole])
 
   useEffect(() => {
@@ -119,14 +122,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const signOut = async () => {
     try {
       await supabase.auth.signOut()
-      setUser(null)
-      setSession(null)
-      setRole('aluno')
-      window.location.href = '/login'
     } catch (error) {
       console.error('Sign out error:', error)
-      window.location.href = '/login'
     }
+  }
   }
 
   const value: AuthContextType = {
