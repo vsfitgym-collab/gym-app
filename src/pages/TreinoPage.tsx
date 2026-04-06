@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom'
 import { Play, SkipForward, RotateCcw, CheckCircle, ChevronLeft, ChevronRight, X } from 'lucide-react'
 import { supabase } from '../lib/supabase'
 import { workouts as localWorkouts } from '../data/workoutsData'
-import { recordWorkout } from '../lib/streakManager'
 import { useAuth } from '../context/AuthContext'
 import {
   createSession,
@@ -244,7 +243,6 @@ export default function TreinoPage() {
         autoSaveProgress(nextExercise, 1)
       } else {
         setTreinoConcluido(true)
-        recordWorkout()
         if (sessionId) {
           await completeSession(sessionId)
         }
@@ -264,7 +262,6 @@ export default function TreinoPage() {
         iniciarDescanso(exercicios[exercicioAtual + 1].rest_seconds)
       } else {
         setTreinoConcluido(true)
-        recordWorkout()
         if (sessionId) {
           await completeSession(sessionId)
         }

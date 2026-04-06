@@ -1,6 +1,6 @@
 import { useMemo, useCallback } from 'react'
 import { useAuth } from '../context/AuthContext'
-import { useUserPlan } from './useUserPlan'
+import { useSubscription } from './useSubscription'
 import type { UserRole, UserPermissions, Plan } from '../types'
 
 const PERMISSIONS: Record<UserRole, Record<Plan, UserPermissions>> = {
@@ -84,7 +84,7 @@ const PERMISSIONS: Record<UserRole, Record<Plan, UserPermissions>> = {
 
 export function useUserRole() {
   const { role: authRole } = useAuth()
-  const { plan, isPremium, isBasic, loading: planLoading } = useUserPlan()
+  const { plan, isPremium, isBasic, loading: planLoading } = useSubscription()
 
   const permissions = useMemo((): UserPermissions => {
     if (planLoading) {

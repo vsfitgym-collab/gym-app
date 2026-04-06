@@ -109,6 +109,16 @@
 }
 
 /* ==================== */
+/* TREINOS GRID         */
+/* ==================== */
+
+.treinos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 16px;
+}
+
+/* ==================== */
 /* WORKOUT CARD         */
 /* ==================== */
 
@@ -123,6 +133,18 @@
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   animation: cardSlideIn 0.5s ease forwards;
   opacity: 0;
+}
+
+.card-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.card-action {
+  display: flex;
+  align-items: center;
+  gap: 4px;
 }
 
 @keyframes cardSlideIn {

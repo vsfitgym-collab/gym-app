@@ -1,10 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useSubscription } from '../hooks/useSubscription'
 import { supabase } from '../lib/supabase'
-import { Dumbbell, Clock, FileText, Plus, Play, Edit2, ChevronRight, TrendingUp } from 'lucide-react'
-import { workouts as workoutsData, type Workout, getLevelColor, getLevelLabel } from '../data/workoutsData'
+import { checkWorkoutLimit, showLimitToast } from '../lib/planLimits'
+import { Dumbbell, FileText, Clock, TrendingUp, Plus, Play, Edit2, ChevronRight } from 'lucide-react'
+import { type Workout, getLevelColor, getLevelLabel } from '../data/workoutsData'
 import { SkeletonList } from '../components/ui/Skeleton'
+import DataStateHandler, { type DataState } from '../components/DataStateHandler'
 import './Treinos.css'
 
 interface WorkoutCardProps {
@@ -23,7 +26,6 @@ function WorkoutCard({ treino, index, role, progress, onCardClick, onActionClick
       style={{ animationDelay: `${index * 0.06}s` }}
       onClick={() => onCardClick(treino.id)}
     >
-      {/* Card Header */}
       <div className="card-top">
         <div className="card-icon-circle">
           <Dumbbell size={20} />
@@ -40,7 +42,6 @@ function WorkoutCard({ treino, index, role, progress, onCardClick, onActionClick
         </span>
       </div>
 
-      {/* Card Body */}
       <div className="card-body">
         <h3 className="card-title">{treino.name}</h3>
         
@@ -59,7 +60,6 @@ function WorkoutCard({ treino, index, role, progress, onCardClick, onActionClick
           </div>
         </div>
 
-        {/* Progress Bar (Alunos only) */}
         {role !== 'personal' && (
           <div className="card-progress">
             <div className="progress-track">
@@ -76,70 +76,67 @@ function WorkoutCard({ treino, index, role, progress, onCardClick, onActionClick
         )}
       </div>
 
-      {/* CTA Button */}
-      <button 
-        className={`card-cta ${role === 'personal' ? 'edit' : 'start'}`}
-        onClick={(e) => onActionClick(e, treino.id)}
-      >
-        {role === 'personal' ? (
-          <>
-            <Edit2 size={16} />
-            <span>Editar</span>
-          </>
-        ) : (
-          <>
-            <Play size={14} />
-            <span>Iniciar treino</span>
-          </>
-        )}
-        <ChevronRight size={16} className="cta-arrow" />
-      </button>
+      <div className="card-footer">
+        <button 
+          className="action-btn"
+          onClick={(e) => onActionClick(e, treino.id)}
+        >
+          {role === 'personal' ? <Edit2 size={16} /> : <Play size={16} />}
+          <ChevronRight size={16} />
+        </button>
+      </div>
     </div>
   )
 }
 
 export default function TreinosPage() {
   const navigate = useNavigate()
-  const { role } = useAuth()
+  const { user, role } = useAuth()
+  const { isPremium, limits } = useSubscription()
   const [treinos, setTreinos] = useState<Workout[]>([])
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState<string | null>(null)
+  const treinoCount = treinos.length
+  const [dataState, setDataState] = useState<DataState>('loading')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [workoutProgress] = useState<Record<string, number>>(() => {
     const prog: Record<string, number> = {}
-    workoutsData.forEach((_, i) => {
+    for (let i = 0; i < 10; i++) {
       prog[String(i)] = Math.floor(Math.random() * 40 + 60)
-    })
+    }
     return prog
   })
 
   useEffect(() => {
+    if (!user) {
+      return
+    }
     carregarTreinos()
-  }, [])
+  }, [user])
 
   const carregarTreinos = async () => {
     try {
-      setLoading(true)
-      setError(null)
+      setDataState('loading')
+      setErrorMessage(null)
       
-      console.log('Carregando treinos...')
+      console.log('TreinosPage: Carregando treinos para user:', user?.id)
       
       const { data, error } = await supabase
         .from('workouts')
         .select('*')
         .order('created_at', { ascending: false })
 
-      console.log('Workouts data:', data, 'Error:', error)
+      console.log('TreinosPage: Data:', data, 'Error:', error)
 
       if (error) {
-        console.error('Erro ao carregar workouts:', error)
-        setError(error.message)
-        setTreinos(workoutsData)
+        console.error('TreinosPage: Erro ao carregar workouts:', error)
+        setErrorMessage(error.message)
+        setDataState('error')
         return
       }
 
       if (!data || data.length === 0) {
-        console.log('Nenhum treino encontrado, usando dados locais')
-        setTreinos(workoutsData)
+        console.log('TreinosPage: Nenhum treino encontrado')
+        setTreinos([])
+        setDataState('empty')
         return
       }
       
@@ -164,17 +161,18 @@ export default function TreinosPage() {
       
       setTreinos(workoutsWithCount)
       console.log('Treinos carregados:', workoutsWithCount.length)
-    } catch (err) {
+      setDataState('success')
+    } catch (err: any) {
       console.error('Erro ao carregar treinos:', err)
-      setError('Erro ao carregar treinos')
-      setTreinos(workoutsData)
-    } finally {
-      setLoading(false)
+      setErrorMessage(err.message || 'Erro ao carregar treinos')
+      setDataState('error')
     }
   }
 
   const handleCardClick = (treinoId: string) => {
-    if (role !== 'personal') {
+    if (role === 'personal') {
+      navigate(`/treinos/editar/${treinoId}`)
+    } else {
       navigate(`/treinos/executar/${treinoId}`)
     }
   }
@@ -188,62 +186,68 @@ export default function TreinosPage() {
     }
   }
 
+  const handleRetry = () => {
+    carregarTreinos()
+  }
+
   return (
     <div className="treinos-page">
-      {/* Header */}
       <div className="treinos-header">
         <div className="header-content">
           <h1 className="page-title">Meus Treinos</h1>
-          <span className="page-subtitle">{treinos.length} treinos disponíveis</span>
+          <span className="page-subtitle">
+            {dataState === 'success' ? `${treinos.length} treinos disponíveis` : ''}
+          </span>
         </div>
-        {role === 'personal' && (
-          <button className="btn-novo" onClick={() => navigate('/treinos/criar')}>
+        {role === 'personal' && dataState !== 'loading' && dataState !== 'error' && (
+          <button 
+            className={`btn-novo ${!isPremium && treinoCount >= limits.maxWorkouts ? 'btn-locked' : ''}`}
+            onClick={async () => {
+              const limitCheck = await checkWorkoutLimit(user?.id || '', treinoCount)
+              if (!limitCheck.allowed) {
+                showLimitToast(limitCheck.upgradeMessage || 'Limite atingido')
+                navigate('/planos')
+              } else {
+                navigate('/treinos/criar')
+              }
+            }}
+          >
             <Plus size={18} />
             <span>Novo Treino</span>
+            {!isPremium && (
+              <span className="btn-limit">
+                ({treinos.length}/{limits.maxWorkouts})
+              </span>
+            )}
           </button>
         )}
       </div>
 
-      {/* Loading / Empty / List */}
-      {loading ? (
-        <SkeletonList count={4} />
-      ) : error ? (
-        <div className="treinos-empty">
-          <div className="empty-icon-wrapper">
-            <Dumbbell size={48} />
+      <DataStateHandler
+        state={dataState}
+        loadingComponent={<SkeletonList count={4} />}
+        errorMessage={errorMessage || 'Erro ao carregar treinos'}
+        errorAction={{ label: 'Tentar novamente', onClick: handleRetry }}
+        emptyTitle="Nenhum treino encontrado"
+        emptyMessage="Crie seu primeiro treino para começar"
+        emptyAction={role === 'personal' ? { label: 'Criar Treino', onClick: () => navigate('/treinos/criar') } : undefined}
+      >
+        {treinos.length > 0 && (
+          <div className="treinos-grid">
+            {treinos.map((treino, index) => (
+              <WorkoutCard
+                key={treino.id}
+                treino={treino}
+                index={index}
+                role={role}
+                progress={workoutProgress[String(index)] || 0}
+                onCardClick={handleCardClick}
+                onActionClick={handleActionClick}
+              />
+            ))}
           </div>
-          <h3>Erro ao carregar</h3>
-          <span>{error}</span>
-        </div>
-      ) : treinos.length === 0 ? (
-        <div className="treinos-empty">
-          <div className="empty-icon-wrapper">
-            <Dumbbell size={48} />
-          </div>
-          <h3>Nenhum treino encontrado</h3>
-          <span>Crie seu primeiro treino para começar sua jornada fitness</span>
-          {role === 'personal' && (
-            <button className="btn-criar" onClick={() => navigate('/treinos/criar')}>
-              <Plus size={18} />
-              Criar Treino
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="treinos-list">
-          {treinos.map((treino, index) => (
-            <WorkoutCard
-              key={treino.id}
-              treino={treino}
-              index={index}
-              role={role || 'aluno'}
-              progress={workoutProgress[treino.id] || Math.floor(Math.random() * 40 + 60)}
-              onCardClick={handleCardClick}
-              onActionClick={handleActionClick}
-            />
-          ))}
-        </div>
-      )}
+        )}
+      </DataStateHandler>
     </div>
   )
 }

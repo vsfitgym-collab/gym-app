@@ -1,7 +1,7 @@
 import React, { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Lock, Crown, Sparkles, ArrowRight } from 'lucide-react'
-import { useUserPlan } from '../hooks/useUserPlan'
+import { useSubscription } from '../hooks/useSubscription'
 import './PremiumGuard.css'
 
 interface PremiumGuardProps {
@@ -18,7 +18,7 @@ export const PremiumGuard = memo(function PremiumGuard({
   requirePlan = 'premium',
 }: PremiumGuardProps) {
   const navigate = useNavigate()
-  const { plan, isPremium, loading } = useUserPlan()
+  const { plan, isPremium, loading } = useSubscription()
 
   if (loading) {
     return (

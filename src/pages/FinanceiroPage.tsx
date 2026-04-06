@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
+import { useUserRole } from '../hooks/useUserRole'
 import {
   DollarSign,
   Calendar,
@@ -18,6 +19,8 @@ import {
   X,
 } from 'lucide-react'
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
+import CardBloqueio from '../components/CardBloqueio'
+import { useSubscription } from '../hooks/useSubscription'
 import './Financeiro.css'
 
 interface Student {
@@ -54,6 +57,8 @@ const periodOptions = [
 
 export default function FinanceiroPage() {
   const { user } = useAuth()
+  const { role } = useUserRole()
+  const { isPremium } = useSubscription()
   const [period, setPeriod] = useState('month')
   const [students, setStudents] = useState<Student[]>([])
   const [revenueData, setRevenueData] = useState<MonthlyRevenue[]>([])
@@ -69,16 +74,22 @@ export default function FinanceiroPage() {
   const [selectedStudent, setSelectedStudent] = useState<Student | null>(null)
 
   useEffect(() => {
+    if (!user) {
+      console.log('FinanceiroPage: User not loaded, skipping...')
+      return
+    }
     loadData()
-  }, [period])
+  }, [user, period])
 
   const loadData = async () => {
     if (!user) return
     setLoading(true)
     try {
+      console.log('FinanceiroPage: Loading data for user:', user.id)
       await Promise.all([loadStudents(), loadRevenueData(), loadStats()])
+      console.log('FinanceiroPage: Data loaded successfully')
     } catch (error) {
-      console.error('Erro ao carregar dados:', error)
+      console.error('FinanceiroPage: Erro ao carregar dados:', error)
     } finally {
       setLoading(false)
     }
@@ -184,6 +195,22 @@ export default function FinanceiroPage() {
       </div>
     )
   }
+
+   // Allow personal role access to finance regardless of plan
+   // Only block non-personal users who aren't premium
+   if (role !== 'personal' && !isPremium) {
+     return (
+       <div className="financeiro-page">
+         <div className="financeiro-header">
+           <div className="header-info">
+             <h1>Financeiro</h1>
+             <p>Visão geral dos seus ganhos</p>
+           </div>
+         </div>
+         <CardBloqueio feature="controle financeiro completo" />
+       </div>
+     )
+   }
 
   return (
     <div className="financeiro-page">

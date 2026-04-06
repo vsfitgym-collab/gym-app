@@ -20,13 +20,18 @@ export default function LoginPage() {
     setError('')
     setLoading(true)
 
-    const result = await signIn(email, password)
+    try {
+      const result = await signIn(email, password)
 
-    if (result.error) {
-      setError(result.cleanMessage || 'Erro ao fazer login')
+      if (result.error) {
+        setError(result.cleanMessage || 'Erro ao fazer login')
+      } else {
+        navigate(from, { replace: true })
+      }
+    } catch (err: any) {
+      setError(err.message || 'Erro ao fazer login')
+    } finally {
       setLoading(false)
-    } else {
-      navigate(from, { replace: true })
     }
   }
 

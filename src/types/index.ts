@@ -89,3 +89,11 @@ export interface AuthContextType {
   signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null; cleanMessage: string | null }>
   signOut: () => Promise<void>
 }
+
+export interface UserProfile {
+  id: string
+  role: UserRole
+  plan: Plan
+  name: string
+  email?: string
+}

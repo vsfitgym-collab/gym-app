@@ -71,20 +71,24 @@ function AppRoutes() {
           </ProtectedRoute>
         }>
           <Route index element={<DashboardPage />} />
+          
+          {/* Rotas Only Personal */}
           {role === 'personal' && (
             <>
               <Route path="alunos" element={<AlunosPage />} />
               <Route path="financeiro" element={<FinanceiroPage />} />
               <Route path="pagamentos" element={<PendingPaymentsPage />} />
+              <Route path="treinos/criar" element={<CriarTreinoPage />} />
+              <Route path="treinos/editar/:id" element={<CriarTreinoPage />} />
+              <Route path="exercicios/editar/:id" element={<EditarExercicioPage />} />
             </>
           )}
+          
+          {/* Rotas para Todos */}
           <Route path="treinos" element={<TreinosPage />} />
-          <Route path="treinos/criar" element={<CriarTreinoPage />} />
-          <Route path="treinos/editar/:id" element={<CriarTreinoPage />} />
           <Route path="treinos/executar/:id" element={<TreinoPage />} />
           <Route path="planos" element={<PlanosPage />} />
           <Route path="exercicios" element={<ExercisesPage />} />
-          <Route path="exercicios/editar/:id" element={<EditarExercicioPage />} />
           <Route path="conquistas" element={<ConquistasPage />} />
           <Route path="chat" element={<ChatPage />} />
         </Route>

@@ -15,17 +15,37 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return email?.toLowerCase() === 'vsfitgym@gmail.com' ? 'personal' : 'aluno'
   }
 
+  const fetchUserRole = useCallback(async (userId: string, email?: string): Promise<UserRole> => {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', userId)
+        .single()
+
+      if (profile?.role === 'personal' || profile?.role === 'aluno') {
+        return profile.role
+      }
+
+      return getRoleByEmail(email)
+    } catch {
+      return getRoleByEmail(email)
+    }
+  }, [])
+
   const handleAuthChange = useCallback(async (newSession: Session | null) => {
     if (newSession) {
       setSession(newSession)
       setUser(newSession.user)
-      setRole(getRoleByEmail(newSession.user.email))
+
+      const userRole = await fetchUserRole(newSession.user.id, newSession.user.email)
+      setRole(userRole)
       
       try {
         await supabase.from('profiles').upsert({
           id: newSession.user.id,
           name: newSession.user.email?.split('@')[0] || 'Usuario',
-          role: getRoleByEmail(newSession.user.email)
+          role: userRole
         }, { onConflict: 'id' })
       } catch (e) {
         console.warn('Profile upsert error (non-critical):', e)
@@ -36,26 +56,41 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setRole('aluno')
     }
     setLoading(false)
-  }, [])
+  }, [fetchUserRole])
 
   useEffect(() => {
     const init = async () => {
+      console.log('AuthContext: Initializing...')
       try {
         const { data: { session } } = await supabase.auth.getSession()
-        await handleAuthChange(session)
+        
+        if (session) {
+          await handleAuthChange(session)
+        } else {
+          setLoading(false)
+        }
       } catch (error) {
         console.error('Auth init error:', error)
         setLoading(false)
       }
     }
+
+    const timeoutId = setTimeout(() => {
+      console.log('AuthContext: Timeout reached, forcing loading=false')
+      setLoading(false)
+    }, 8000)
+
     init()
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       handleAuthChange(session)
     })
 
-    return () => subscription.unsubscribe()
-  }, [handleAuthChange])
+    return () => {
+      clearTimeout(timeoutId)
+      subscription.unsubscribe()
+    }
+  }, [])
 
   const signIn = async (email: string, password: string) => {
     try {
@@ -82,8 +117,16 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }
 
   const signOut = async () => {
-    await supabase.auth.signOut()
-    window.location.href = '/login'
+    try {
+      await supabase.auth.signOut()
+      setUser(null)
+      setSession(null)
+      setRole('aluno')
+      window.location.href = '/login'
+    } catch (error) {
+      console.error('Sign out error:', error)
+      window.location.href = '/login'
+    }
   }
 
   const value: AuthContextType = {

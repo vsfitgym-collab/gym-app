@@ -38,42 +38,60 @@ export default function PendingPaymentsPage() {
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null)
 
   useEffect(() => {
+    if (!user) {
+      console.log('PendingPaymentsPage: User not loaded, skipping...')
+      return
+    }
     loadPayments()
-  }, [])
+  }, [user])
 
   const loadPayments = async () => {
     if (!user) return
     setLoading(true)
+    console.log('PendingPaymentsPage: Loading payments...')
 
-    const { data: paymentsData, error: paymentsError } = await supabase
-      .from('pending_payments')
-      .select('*')
-      .order('created_at', { ascending: false })
+    try {
+      const { data: paymentsData, error: paymentsError } = await supabase
+        .from('pending_payments')
+        .select('*')
+        .order('created_at', { ascending: false })
 
-    if (paymentsError) {
-      console.error('Erro ao carregar pagamentos:', paymentsError)
+      if (paymentsError) {
+        console.error('PendingPaymentsPage: Erro ao carregar pagamentos:', paymentsError)
+        setLoading(false)
+        return
+      }
+
+      if (!paymentsData || paymentsData.length === 0) {
+        console.log('PendingPaymentsPage: Nenhum pagamento pendente')
+        setPayments([])
+        setLoading(false)
+        return
+      }
+
+      const enrichedPayments: PendingPayment[] = []
+
+      for (const payment of paymentsData || []) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('name, email')
+          .eq('id', payment.user_id)
+          .single()
+
+        enrichedPayments.push({
+          ...payment,
+          user_name: profile?.name || profile?.email?.split('@')[0] || 'Aluno',
+          user_email: profile?.email || '',
+        })
+      }
+
+      setPayments(enrichedPayments)
+      console.log('PendingPaymentsPage: Payments loaded:', enrichedPayments.length)
+    } catch (error) {
+      console.error('PendingPaymentsPage: Error:', error)
+    } finally {
       setLoading(false)
-      return
     }
-
-    const enrichedPayments: PendingPayment[] = []
-
-    for (const payment of paymentsData || []) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('name, email')
-        .eq('id', payment.user_id)
-        .single()
-
-      enrichedPayments.push({
-        ...payment,
-        user_name: profile?.name || profile?.email?.split('@')[0] || 'Aluno',
-        user_email: profile?.email || '',
-      })
-    }
-
-    setPayments(enrichedPayments)
-    setLoading(false)
   }
 
   const handleApprove = async (paymentId: string, plan: string, userId: string) => {

@@ -1,36 +1,34 @@
-import { useState, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Calendar, Clock, Dumbbell } from 'lucide-react'
+import { useState, useMemo, useEffect } from 'react'
+import { useAuth } from '../context/AuthContext'
+import { getWeeklyPresence } from '../lib/presenceManager'
+import { ChevronLeft, ChevronRight, Calendar } from 'lucide-react'
 import './WorkoutCalendar.css'
 
-interface WorkoutDay {
-  date: string
-  name: string
-  completed: boolean
-  time: string
-}
-
-interface UpcomingWorkout {
-  date: string
-  dayName: string
-  name: string
-  time: string
-  muscleGroup: string
-}
-
-const mockWorkoutHistory: WorkoutDay[] = [
-  { date: '2026-04-01', name: 'Treino A - Peito', completed: true, time: '08:00' },
-  { date: '2026-04-02', name: 'Treino B - Costas', completed: true, time: '18:30' },
-  { date: '2026-04-04', name: 'Treino C - Pernas', completed: false, time: '07:00' },
-]
-
-const mockUpcoming: UpcomingWorkout[] = [
-  { date: '2026-04-06', dayName: 'Seg', name: 'Treino A - Peito', time: '08:00', muscleGroup: 'Peito' },
-  { date: '2026-04-07', dayName: 'Ter', name: 'Treino B - Costas', time: '18:00', muscleGroup: 'Costas' },
-  { date: '2026-04-08', dayName: 'Qua', name: 'Treino C - Pernas', time: '07:30', muscleGroup: 'Perna' },
-]
-
 export default function WorkoutCalendar() {
+  const { user } = useAuth()
   const [currentDate, setCurrentDate] = useState(new Date())
+  const [presenceData, setPresenceData] = useState<{ date: string; present: boolean }[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    if (user) {
+      loadPresenceData()
+    }
+  }, [user])
+
+  const loadPresenceData = async () => {
+    if (!user) return
+    setLoading(true)
+    try {
+      const weekly = await getWeeklyPresence(user.id)
+      setPresenceData(weekly)
+    } catch (error) {
+      console.error('Error loading presence data:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
+
   const today = new Date()
 
   const { daysInMonth, firstDayOfMonth, monthName, year } = useMemo(() => {
@@ -49,9 +47,9 @@ export default function WorkoutCalendar() {
 
   const getDayStatus = (day: number) => {
     const dateStr = `${currentDate.getFullYear()}-${String(currentDate.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-    const workout = mockWorkoutHistory.find(w => w.date === dateStr)
+    const presence = presenceData.find(p => p.date === dateStr)
     const isToday = today.getDate() === day && today.getMonth() === currentDate.getMonth() && today.getFullYear() === currentDate.getFullYear()
-    return { workout, isToday, dateStr }
+    return { presence, isToday, dateStr }
   }
 
   const renderCalendarDays = () => {
@@ -61,19 +59,32 @@ export default function WorkoutCalendar() {
     blankDays.forEach(i => days.push(<div key={`blank-${i}`} className="cal-day blank" />))
 
     for (let day = 1; day <= daysInMonth; day++) {
-      const { workout, isToday } = getDayStatus(day)
+      const { presence, isToday } = getDayStatus(day)
       days.push(
-        <div key={day} className={`cal-day ${workout ? 'has-workout' : ''} ${workout?.completed ? 'completed' : ''} ${isToday ? 'today' : ''}`}>
+        <div key={day} className={`cal-day ${presence?.present ? 'has-workout' : ''} ${presence?.present ? 'completed' : ''} ${isToday ? 'today' : ''}`}>
           <span className="day-number">{day}</span>
-          {workout && (
+          {presence?.present && (
             <div className="day-dot">
-              {workout.completed ? '✓' : '●'}
+              ✓
             </div>
           )}
         </div>
       )
     }
     return days
+  }
+
+  const last7Days = presenceData.slice(-7)
+
+  if (loading) {
+    return (
+      <div className="workout-calendar-widget">
+        <div className="calendar-loading">
+          <div className="spinner" />
+          <span>Carregando...</span>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -102,29 +113,48 @@ export default function WorkoutCalendar() {
         {renderCalendarDays()}
       </div>
 
-      {/* Upcoming Workouts */}
+      {/* Last 7 Days Summary */}
       <div className="cal-upcoming">
-        <h4>Próximos Treinos</h4>
+        <h4>Últimos 7 Dias</h4>
         <div className="upcoming-list">
-          {mockUpcoming.map((w, i) => (
-            <div key={i} className="upcoming-item">
-              <div className="upcoming-date">
-                <span className="upcoming-day-name">{w.dayName}</span>
-                <span className="upcoming-day-num">{new Date(w.date).getDate()}</span>
-              </div>
-              <div className="upcoming-info">
-                <span className="upcoming-name">{w.name}</span>
-                <div className="upcoming-meta">
-                  <Clock size={12} />
-                  <span>{w.time}</span>
-                  <Dumbbell size={12} />
-                  <span>{w.muscleGroup}</span>
+          {last7Days.map((day, i) => {
+            const dayName = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'][new Date(day.date).getDay()]
+            return (
+              <div key={i} className={`upcoming-item ${day.present ? 'completed' : ''}`}>
+                <div className="upcoming-date">
+                  <span className="upcoming-day-name">{dayName}</span>
+                  <span className="upcoming-day-num">{new Date(day.date).getDate()}</span>
+                </div>
+                <div className="upcoming-info">
+                  <span className="upcoming-name">{day.present ? 'Treino realizado' : 'Sem treino'}</span>
+                  <div className="upcoming-meta">
+                    {day.present ? <CheckCircleIcon size={12} /> : <XCircleIcon size={12} />}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       </div>
     </div>
+  )
+}
+
+function CheckCircleIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+      <polyline points="22 4 12 14.01 9 11.01" />
+    </svg>
+  )
+}
+
+function XCircleIcon({ size }: { size: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <line x1="15" y1="9" x2="9" y2="15" />
+      <line x1="9" y1="9" x2="15" y2="15" />
+    </svg>
   )
 }

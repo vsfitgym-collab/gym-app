@@ -1,0 +1,101 @@
+.data-state-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  color: var(--color-text-secondary);
+}
+
+.data-state-spinner {
+  width: 32px;
+  height: 32px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-bottom: 16px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.data-state-error,
+.data-state-empty,
+.error-state,
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  text-align: center;
+}
+
+.error-icon,
+.empty-icon,
+.error-state svg,
+.empty-state svg {
+  color: var(--color-text-muted);
+  margin-bottom: 16px;
+  opacity: 0.6;
+}
+
+.error-state svg {
+  color: var(--color-error);
+  opacity: 1;
+}
+
+.data-state-error h3,
+.data-state-empty h3,
+.error-state h3,
+.empty-state h3 {
+  color: var(--color-text-primary);
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.data-state-error p,
+.data-state-empty p,
+.error-state p,
+.empty-state p {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  max-width: 280px;
+}
+
+.error-action-btn,
+.empty-action-btn,
+.error-state-btn,
+.empty-state-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 16px;
+  padding: 10px 20px;
+  background: var(--color-primary);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.error-action-btn:hover,
+.empty-action-btn:hover,
+.error-state-btn:hover,
+.empty-state-btn:hover {
+  background: var(--color-primary-dark);
+  transform: translateY(-1px);
+}
+
+.error-action-btn:active,
+.empty-action-btn:active,
+.error-state-btn:active,
+.empty-state-btn:active {
+  transform: translateY(0);
+}

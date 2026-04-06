@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
+import { useSubscription } from '../hooks/useSubscription'
 import {
   Dumbbell,
   Clock,
@@ -22,6 +23,7 @@ import { workouts, getLevelColor, getLevelLabel, type Workout } from '../data/wo
 import { supabase } from '../lib/supabase'
 import { registerWorkoutPresence, checkTodayPresence } from '../lib/presenceManager'
 import { useState, useEffect } from 'react'
+import CardBloqueio from '../components/CardBloqueio'
 import './Dashboard.css'
 
 export const weeklyProgress = [
@@ -107,6 +109,7 @@ function WorkoutCard({ treino, index }: WorkoutCardProps) {
 export default function DashboardPage() {
   const navigate = useNavigate()
   const { user, role } = useAuth()
+  const { isPremium } = useSubscription()
   const [showPresenceModal, setShowPresenceModal] = useState(false)
   const [dbWorkouts, setDbWorkouts] = useState<{ id: string; name: string }[]>([])
   const [presenceStatus, setPresenceStatus] = useState<Record<string, boolean>>({})
@@ -234,12 +237,14 @@ export default function DashboardPage() {
           <h1>Dashboard</h1>
           <p>Visão geral do seu progresso</p>
         </div>
-        <div className="header-actions">
-          <button className="btn-primary" onClick={() => navigate('/treinos/criar')}>
-            <Plus size={16} />
-            <span>Novo Treino</span>
-          </button>
-        </div>
+        {role === 'personal' && (
+          <div className="header-actions">
+            <button className="btn-primary" onClick={() => navigate('/treinos/criar')}>
+              <Plus size={16} />
+              <span>Novo Treino</span>
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Streak */}
@@ -307,16 +312,20 @@ export default function DashboardPage() {
           <WorkoutCalendar />
         </div>
 
-        {/* Chart */}
-        <div className="dashboard-card dashboard-card-full">
-          <div className="card-header">
-            <div className="card-title">
-              <h2>Evolução de Treinos</h2>
-              <span>Últimas 4 semanas</span>
+        {/* Chart - Premium only */}
+        {isPremium ? (
+          <div className="dashboard-card dashboard-card-full">
+            <div className="card-header">
+              <div className="card-title">
+                <h2>Evolução de Treinos</h2>
+                <span>Últimas 4 semanas</span>
+              </div>
             </div>
+            <GraficoEvolucao />
           </div>
-          <GraficoEvolucao />
-        </div>
+        ) : (
+          <CardBloqueio feature="gráficos e analytics avançados" />
+        )}
 
         {/* Shortcuts (Personal only) */}
         {role === 'personal' && (

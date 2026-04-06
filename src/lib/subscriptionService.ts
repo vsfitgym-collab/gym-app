@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 
 export type Plan = 'free' | 'basic' | 'premium'
-export type SubscriptionStatus = 'active' | 'canceled' | 'expired' | 'trial'
+export type SubscriptionStatus = 'active' | 'canceled' | 'expired' | 'trialing'
 
 export interface Subscription {
   id: string
@@ -11,6 +11,15 @@ export interface Subscription {
   start_date: string
   end_date: string | null
   trial_ends_at: string | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SubscriptionWithProfile extends Subscription {
+  profile?: {
+    name: string
+    email: string
+  }
 }
 
 export interface PlanLimits {
@@ -22,6 +31,7 @@ export interface PlanLimits {
   hasCustomExercises: boolean
   hasExport: boolean
   maxStudents: number
+  canCreateUnlimitedWorkouts: boolean
 }
 
 export const planLimits: Record<Plan, PlanLimits> = {
@@ -34,6 +44,7 @@ export const planLimits: Record<Plan, PlanLimits> = {
     hasCustomExercises: false,
     hasExport: false,
     maxStudents: 5,
+    canCreateUnlimitedWorkouts: false,
   },
   basic: {
     maxWorkouts: 5,
@@ -44,6 +55,7 @@ export const planLimits: Record<Plan, PlanLimits> = {
     hasCustomExercises: false,
     hasExport: false,
     maxStudents: 10,
+    canCreateUnlimitedWorkouts: false,
   },
   premium: {
     maxWorkouts: Infinity,
@@ -54,6 +66,7 @@ export const planLimits: Record<Plan, PlanLimits> = {
     hasCustomExercises: true,
     hasExport: true,
     maxStudents: Infinity,
+    canCreateUnlimitedWorkouts: true,
   },
 }
 
@@ -81,9 +94,9 @@ export const isPremium = async (userId: string): Promise<boolean> => {
   
   if ((sub.plan === 'premium' || sub.plan === 'basic') && sub.status === 'active') return true
   
-  if (sub.status === 'trial' && sub.trial_ends_at) {
-    return new Date(sub.trial_ends_at) > new Date()
-  }
+    if (sub.status === 'trialing' && sub.trial_ends_at) {
+      return new Date(sub.trial_ends_at) > new Date()
+    }
   
   return false
 }
@@ -93,7 +106,7 @@ export const getPlan = async (userId: string): Promise<Plan> => {
     const sub = await getSubscription(userId)
     if (!sub) return 'free'
     
-    if (sub.status === 'trial' && sub.trial_ends_at) {
+    if (sub.status === 'trialing' && sub.trial_ends_at) {
       if (new Date(sub.trial_ends_at) > new Date()) return 'free'
     }
     
@@ -214,7 +227,7 @@ export const checkFeatureAccess = async (
 }
 
 export const getTrialDaysRemaining = (subscription: Subscription | null): number => {
-  if (!subscription || subscription.status !== 'trial' || !subscription.trial_ends_at) return 0
+  if (!subscription || subscription.status !== 'trialing' || !subscription.trial_ends_at) return 0
   const remaining = new Date(subscription.trial_ends_at).getTime() - Date.now()
   return Math.max(0, Math.ceil(remaining / (1000 * 60 * 60 * 24)))
 }

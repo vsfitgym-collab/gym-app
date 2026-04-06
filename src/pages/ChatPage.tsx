@@ -1,18 +1,27 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useAuth } from '../context/AuthContext'
 import { useChat } from '../hooks/useChat'
 import { SkeletonText } from '../components/ui/Skeleton'
+import DataStateHandler, { type DataState } from '../components/DataStateHandler'
 import './Chat.css'
 
 export default function ChatPage() {
   const { user, role } = useAuth()
   const [selectedUser, setSelectedUser] = useState<{ id: string; name: string; email: string } | null>(null)
+  const [chatState, setChatState] = useState<DataState>('loading')
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
 
-  const { messages, loading, conversations, sendMessage } = useChat({
+  const { messages, loading, conversations, sendMessage, refresh } = useChat({
     currentUserId: user?.id || '',
     role,
     selectedUser
   })
+
+  useEffect(() => {
+    if (user) {
+      setChatState(loading ? 'loading' : messages.length === 0 ? 'empty' : 'success')
+    }
+  }, [user, loading, messages.length])
 
   const handleSendMessage = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
@@ -25,8 +34,10 @@ export default function ChatPage() {
     try {
       await sendMessage(content)
       input.value = ''
-    } catch {
-      alert('Erro ao enviar mensagem')
+      setChatState('success')
+    } catch (err: any) {
+      setErrorMessage(err.message || 'Erro ao enviar mensagem')
+      setChatState('error')
     }
   }
 
@@ -35,6 +46,10 @@ export default function ChatPage() {
       hour: '2-digit', 
       minute: '2-digit' 
     })
+  }
+
+  const handleRetry = () => {
+    refresh()
   }
 
   if (!selectedUser && role === 'personal') {
@@ -79,19 +94,20 @@ export default function ChatPage() {
         </div>
       )}
 
-      <div className="chat-messages">
-        {loading ? (
+      <DataStateHandler
+        state={chatState}
+        loadingComponent={
           <div className="chat-loading">
             <SkeletonText lines={5} />
           </div>
-        ) : messages.length === 0 ? (
-          <div className="chat-empty">
-            <span>💬</span>
-            <p>Nenhuma mensagem ainda</p>
-            <p className="chat-empty-sub">Envie uma mensagem para começar</p>
-          </div>
-        ) : (
-          messages.map((msg) => (
+        }
+        errorMessage={errorMessage || 'Erro ao carregar mensagens'}
+        errorAction={{ label: 'Tentar novamente', onClick: handleRetry }}
+        emptyTitle="Nenhuma mensagem ainda"
+        emptyMessage="Comece a conversa enviando uma mensagem"
+      >
+        <div className="chat-messages">
+          {messages.map((msg) => (
             <div 
               key={msg.id} 
               className={`message ${msg.sender_id === user?.id ? 'sent' : 'received'}`}
@@ -99,9 +115,9 @@ export default function ChatPage() {
               <div className="message-content">{msg.content}</div>
               <div className="message-time">{formatTime(msg.created_at)}</div>
             </div>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      </DataStateHandler>
 
       <form className="chat-input" onSubmit={handleSendMessage}>
         <input

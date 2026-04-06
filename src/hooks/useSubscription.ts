@@ -14,9 +14,11 @@ interface UseSubscriptionReturn {
   subscription: Subscription | null
   plan: Plan
   isPremium: boolean
+  isBasic: boolean
   limits: PlanLimits
   loading: boolean
   trialDaysRemaining: number
+  status: Subscription['status']
   refresh: () => Promise<void>
 }
 
@@ -49,17 +51,20 @@ export function useSubscription(): UseSubscriptionReturn {
     loadData()
   }, [loadData])
 
-  const isSubscribed = currentPlan !== 'free'
+  const isPremium = currentPlan !== 'free'
+  const isBasic = currentPlan === 'basic'
   const limits = planLimits[currentPlan] || planLimits.free
   const trialDaysRemaining = getTrialDaysRemaining(subscription)
 
   return {
     subscription,
     plan: currentPlan,
-    isPremium: isSubscribed,
+    isPremium,
+    isBasic,
     limits,
     loading,
     trialDaysRemaining,
+    status: subscription?.status || 'active',
     refresh: loadData,
   }
 }

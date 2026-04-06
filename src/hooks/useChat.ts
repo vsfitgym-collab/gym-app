@@ -15,11 +15,12 @@ interface UseChatReturn {
   loading: boolean
   conversations: Profile[]
   sendMessage: (content: string) => Promise<void>
+  refresh: () => void
 }
 
 export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): UseChatReturn {
   const [messages, setMessages] = useState<Message[]>([])
-  const [loading, setLoading] = useState(false)
+  const [loading, setLoading] = useState(true)
   const [conversations, setConversations] = useState<Profile[]>([])
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -30,39 +31,59 @@ export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): 
   }, [messages])
 
   const loadMessages = useCallback(async () => {
-    if (!currentUserId || !otherUserId) return
+    if (!currentUserId || !otherUserId) {
+      setLoading(false)
+      return
+    }
 
     setLoading(true)
-    console.log('Carregando mensagens entre', currentUserId, 'e', otherUserId)
+    console.log('Chat: Carregando mensagens entre', currentUserId, 'e', otherUserId)
     
-    const { data, error } = await supabase
-      .from('messages')
-      .select('*')
-      .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${currentUserId})`)
-      .order('created_at', { ascending: true })
-    
-    console.log('Mensagens:', data, 'Erro:', error)
-    
-    if (data) setMessages(data)
-    setLoading(false)
+    try {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .or(`and(sender_id.eq.${currentUserId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${currentUserId})`)
+        .order('created_at', { ascending: true })
+      
+      if (error) {
+        console.error('Chat: Erro ao carregar mensagens:', error)
+        setMessages([])
+      } else {
+        console.log('Chat: Mensagens carregadas:', data?.length || 0)
+        setMessages(data || [])
+      }
+    } catch (err) {
+      console.error('Chat: Erro:', err)
+      setMessages([])
+    } finally {
+      setLoading(false)
+    }
   }, [currentUserId, otherUserId])
 
   const loadAlunos = useCallback(async () => {
-    console.log('Carregando lista de alunos...')
-    const { data, error } = await supabase
-      .from('profiles')
-      .select('id, name, email')
-      .eq('role', 'aluno')
-    
-    console.log('Alunos:', data, 'Erro:', error)
-    
-    if (data) {
-      setConversations(data.map(p => ({
-        id: p.id,
-        name: p.name || p.email?.split('@')[0] || 'Aluno',
-        email: p.email,
-        role: 'aluno'
-      })))
+    console.log('Chat: Carregando lista de alunos...')
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, name, email')
+        .eq('role', 'aluno')
+      
+      if (error) {
+        console.error('Chat: Erro ao carregar alunos:', error)
+        setConversations([])
+      } else {
+        console.log('Chat: Alunos carregados:', data?.length || 0)
+        setConversations(data?.map(p => ({
+          id: p.id,
+          name: p.name || p.email?.split('@')[0] || 'Aluno',
+          email: p.email,
+          role: 'aluno'
+        })) || [])
+      }
+    } catch (err) {
+      console.error('Chat: Erro ao carregar alunos:', err)
+      setConversations([])
     }
   }, [])
 
@@ -78,10 +99,17 @@ export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): 
     if (!error && data && data.length > 0) {
       setMessages(prev => [...prev, data[0]])
     } else if (error) {
-      console.error('Error sending message:', error)
+      console.error('Chat: Erro ao enviar mensagem:', error)
       throw error
     }
   }, [currentUserId, otherUserId])
+
+  const refresh = useCallback(() => {
+    loadMessages()
+    if (role === 'personal') {
+      loadAlunos()
+    }
+  }, [loadMessages, loadAlunos, role])
 
   useEffect(() => {
     if (!currentUserId || !otherUserId) return
@@ -116,6 +144,7 @@ export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): 
     messages,
     loading,
     conversations,
-    sendMessage
+    sendMessage,
+    refresh
   }
 }

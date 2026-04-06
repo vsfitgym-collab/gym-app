@@ -22,7 +22,11 @@ export default function AlunosPage() {
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    carregarAlunos()
+    const load = async () => {
+      console.log('AlunosPage: Carregando...')
+      await carregarAlunos()
+    }
+    load()
   }, [])
 
   const carregarAlunos = async () => {
@@ -43,6 +47,7 @@ export default function AlunosPage() {
         console.error('Erro Supabase:', profilesError)
         setError(profilesError.message)
         setAlunos([])
+        setLoading(false)
         return
       }
 

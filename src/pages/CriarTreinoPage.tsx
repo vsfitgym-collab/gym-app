@@ -1,6 +1,9 @@
 import { useState, useEffect } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
+import { useAuth } from '../context/AuthContext'
+import { useSubscription } from '../hooks/useSubscription'
 import { supabase } from '../lib/supabase'
+import { checkWorkoutLimit, checkExerciseLimit, showLimitToast } from '../lib/planLimits'
 import {
   ArrowLeft,
   Dumbbell,
@@ -51,7 +54,15 @@ const gruposMusculares = [
 export default function CriarTreinoPage() {
   const navigate = useNavigate()
   const { id } = useParams()
+  const { user, role } = useAuth()
+  const { isPremium, limits } = useSubscription()
   const isEditMode = !!id
+
+  useEffect(() => {
+    if (user && role === 'aluno') {
+      navigate('/', { replace: true })
+    }
+  }, [user, role])
 
   const [treino, setTreino] = useState<Treino>({
     nome: '',
@@ -156,6 +167,12 @@ export default function CriarTreinoPage() {
   })
 
   const selecionarExercicio = (exercise: Exercise) => {
+    // Check exercise limit before adding
+    if (!isPremium && treino.exercises.length >= limits.maxExercisesPerWorkout) {
+      showLimitToast(`Limite de ${limits.maxExercisesPerWorkout} exercícios atingido. Faça upgrade para adicionar mais!`)
+      return
+    }
+
     const grupoMap: Record<string, string> = {
       'pectorals': 'Peito',
       'lats': 'Costas',
@@ -226,6 +243,33 @@ export default function CriarTreinoPage() {
     if (treino.exercises.length === 0) {
       alert('Adicione pelo menos um exercício')
       return
+    }
+
+    // Check exercise limit before saving
+    if (!isEditMode && user) {
+      const limitCheck = await checkExerciseLimit(user.id, treino.exercises.length)
+      if (!limitCheck.allowed) {
+        showLimitToast(limitCheck.upgradeMessage || 'Limite de exercícios atingido')
+        navigate('/planos')
+        return
+      }
+    }
+
+    // Check workout limit for new workouts
+    if (!isEditMode && user) {
+      const { data: existingWorkouts } = await supabase
+        .from('workouts')
+        .select('id', { count: 'exact', head: true })
+        .eq('created_by', user.id)
+
+      const currentCount = existingWorkouts?.length || 0
+      const workoutLimit = await checkWorkoutLimit(user.id, currentCount)
+      
+      if (!workoutLimit.allowed) {
+        showLimitToast(workoutLimit.upgradeMessage || 'Limite de treinos atingido')
+        navigate('/planos')
+        return
+      }
     }
 
     setSalvando(true)
