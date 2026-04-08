@@ -130,24 +130,33 @@ export default function DashboardPage() {
   const loadActiveWorkouts = async () => {
     if (!user) return
     try {
-      const { data: workoutsData } = await supabase
+      const { data: treinosData, error: workoutsError } = await supabase
         .from('workouts')
         .select('id, name, created_at')
         .order('created_at', { ascending: false })
         .limit(4)
 
-      if (!workoutsData) {
+      if (workoutsError) {
+        console.error('Erro ao buscar workouts:', workoutsError)
+      }
+
+      if (!treinosData || treinosData.length === 0) {
         setActiveWorkouts([])
         return
       }
 
-      // Contar exercícios por treino
+      // Contar exercícios por treino via tabela workout_plans (que liga treinos a exercícios)
       const enriched: DbWorkoutCard[] = []
-      for (const w of workoutsData) {
-        const { count } = await supabase
-          .from('exercises')
-          .select('id', { count: 'exact', head: true })
+      for (const w of treinosData) {
+        const { count, error: countError } = await supabase
+          .from('workout_plans')
+          .select('*', { count: 'exact', head: true })
           .eq('workout_id', w.id)
+          
+        if (countError) {
+          console.error(`Erro ao contar exercícios para o treino ${w.id}:`, countError)
+        }
+        
         enriched.push({
           id: w.id,
           name: w.name,

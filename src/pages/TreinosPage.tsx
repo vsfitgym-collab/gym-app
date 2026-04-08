@@ -20,9 +20,10 @@ interface WorkoutCardProps {
 }
 
 function WorkoutCard({ treino, index, role, progress, onCardClick, onActionClick }: WorkoutCardProps) {
+  const navigate = useNavigate()
   return (
     <div 
-      className={`treino-card ${role !== 'personal' ? 'clickable' : ''}`}
+      className={`treino-card flex flex-col p-5 h-full transition-all duration-300 hover:scale-[1.02] ${role !== 'personal' ? 'clickable' : ''}`}
       style={{ animationDelay: `${index * 0.06}s` }}
       onClick={() => onCardClick(treino.id)}
     >
@@ -76,12 +77,27 @@ function WorkoutCard({ treino, index, role, progress, onCardClick, onActionClick
         )}
       </div>
 
-      <div className="card-footer">
+      <div className="mt-auto pt-4 flex items-center justify-end gap-2">
+        {role === 'personal' && (
+          <button 
+            className="w-10 h-10 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-300 hover:scale-105 text-white"
+            onClick={(e) => { 
+                e.stopPropagation()
+                navigate(`/treinos/editar/${treino.id}`) 
+            }}
+            title="Editar Treino"
+          >
+            <Edit2 size={16} />
+          </button>
+        )}
         <button 
-          className="action-btn"
-          onClick={(e) => onActionClick(e, treino.id)}
+          className="w-10 h-10 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 transition-all duration-300 hover:scale-105 text-white"
+          onClick={(e) => { 
+              e.stopPropagation()
+              navigate(`/treinos/${treino.id}`) 
+          }}
+          title="Ver Treino"
         >
-          {role === 'personal' ? <Edit2 size={16} /> : <Play size={16} />}
           <ChevronRight size={16} />
         </button>
       </div>
@@ -201,24 +217,11 @@ export default function TreinosPage() {
         </div>
         {role === 'personal' && dataState !== 'loading' && dataState !== 'error' && (
           <button 
-            className={`btn-novo ${!isPremium && treinoCount >= limits.maxWorkouts ? 'btn-locked' : ''}`}
-            onClick={async () => {
-              const limitCheck = await checkWorkoutLimit(user?.id || '', treinoCount)
-              if (!limitCheck.allowed) {
-                showLimitToast(limitCheck.upgradeMessage || 'Limite atingido')
-                navigate('/planos')
-              } else {
-                navigate('/treinos/criar')
-              }
-            }}
+            className="flex items-center gap-2 h-11 px-5 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-medium transition-all duration-300 hover:scale-[1.03] border-none shadow-lg shadow-purple-500/20"
+            onClick={() => navigate('/treinos/criar')}
           >
             <Plus size={18} />
             <span>Novo Treino</span>
-            {!isPremium && (
-              <span className="btn-limit">
-                ({treinos.length}/{limits.maxWorkouts})
-              </span>
-            )}
           </button>
         )}
       </div>

@@ -27,13 +27,13 @@ const ExerciseCard = memo(function ExerciseCard({ exercise, onClick }: ExerciseC
   return (
     <div className="exercise-card" onClick={handleClick}>
       <div className="exercise-image-wrapper">
-        {!imageLoaded && !imageError && (
+        {(exercise.gifUrl && !imageLoaded && !imageError) && (
           <div className="exercise-image-skeleton" />
         )}
         {(!exercise.gifUrl || imageError) ? (
           <div className="exercise-image-placeholder">
             <span className="placeholder-icon">💪</span>
-            <span className="placeholder-text">Sem imagem</span>
+            <span className="placeholder-text">Sem imagem disponíveis</span>
           </div>
         ) : (
           <img

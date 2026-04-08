@@ -15,9 +15,7 @@ const headers = {
   'X-RapidAPI-Host': 'exercisedb.p.rapidapi.com',
 }
 
-const getGifUrl = (exerciseId: string): string => {
-  return `https://exercise-db-images.vercel.app/${exerciseId}.gif`
-}
+
 
 export const fetchExercises = async (
   limit: number = 20, 
@@ -37,13 +35,11 @@ export const fetchExercises = async (
     console.log('API exercises sample:', data.slice(0, 2))
 
     const translatedData = data.map((exercise: any) => {
-      const gifUrl = getGifUrl(exercise.id)
-      
       return {
         ...exercise,
         id: exercise.id || `ex-${Math.random().toString(36).substr(2, 9)}`,
         name: exercise.name,
-        gifUrl: gifUrl,
+        gifUrl: exercise.gifUrl,
         instructions: exercise.instructions?.length > 0 
           ? exercise.instructions 
           : generateInstructions(exercise.target, exercise.name),
@@ -77,12 +73,10 @@ export const fetchExercisesByBodyPart = async (
     const data = await response.json()
 
     const translatedData = data.map((exercise: any) => {
-      const gifUrl = getGifUrl(exercise.id)
-      
       return {
         ...exercise,
         id: exercise.id || `ex-${Math.random().toString(36).substr(2, 9)}`,
-        gifUrl: gifUrl,
+        gifUrl: exercise.gifUrl,
         instructions: exercise.instructions?.length > 0 
           ? exercise.instructions 
           : generateInstructions(exercise.target, exercise.name),
@@ -113,11 +107,9 @@ export const fetchExerciseById = async (
     }
 
     const data = await response.json()
-    const gifUrl = getGifUrl(data.id)
-
     const translatedExercise = translateExercise({
       ...data,
-      gifUrl: gifUrl,
+      gifUrl: data.gifUrl,
       instructions: data.instructions?.length > 0 
         ? data.instructions 
         : generateInstructions(data.target, data.name),
@@ -150,12 +142,10 @@ export const searchExercises = async (
     const data = await response.json()
 
     const translatedData = data.map((exercise: any) => {
-      const gifUrl = getGifUrl(exercise.id)
-      
       return {
         ...exercise,
         id: exercise.id || `ex-${Math.random().toString(36).substr(2, 9)}`,
-        gifUrl: gifUrl,
+        gifUrl: exercise.gifUrl,
         instructions: exercise.instructions?.length > 0 
           ? exercise.instructions 
           : generateInstructions(exercise.target, exercise.name),

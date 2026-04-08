@@ -16,6 +16,7 @@ const DashboardPage = lazy(() => import('./pages/DashboardPage'))
 const AlunosPage = lazy(() => import('./pages/AlunosPage'))
 const TreinosPage = lazy(() => import('./pages/TreinosPage'))
 const TreinoPage = lazy(() => import('./pages/TreinoPage'))
+const TreinoDetalhesPage = lazy(() => import('./pages/TreinoDetalhesPage'))
 const CriarTreinoPage = lazy(() => import('./pages/CriarTreinoPage'))
 const ExercisesPage = lazy(() => import('./pages/ExercisesPage'))
 const EditarExercicioPage = lazy(() => import('./pages/EditarExercicioPage'))
@@ -26,6 +27,8 @@ const PlanosPage = lazy(() => import('./pages/PlanosPage'))
 const PendingPaymentsPage = lazy(() => import('./pages/PendingPaymentsPage'))
 const CriarPlanoPage = lazy(() => import('./pages/planos/CriarPlanoPage'))
 const EditarPlanoPage = lazy(() => import('./pages/planos/EditarPlanoPage'))
+const ConquistasAlunoPage = lazy(() => import('./pages/ConquistasAlunoPage'))
+const CriarConquistaPage = lazy(() => import('./pages/CriarConquistaPage'))
 
 function LoadingScreen() {
   return (
@@ -86,10 +89,13 @@ function AppRoutes() {
           
           {/* Rotas para Todos */}
           <Route path="treinos" element={<TreinosPage />} />
+          <Route path="treinos/:id" element={<TreinoDetalhesPage />} />
           <Route path="treinos/executar/:id" element={<TreinoPage />} />
           <Route path="planos" element={<PlanosPage />} />
           <Route path="exercicios" element={<ExercisesPage />} />
           <Route path="conquistas" element={<ConquistasPage />} />
+          <Route path="conquistas/aluno/:id" element={role === 'personal' ? <ConquistasAlunoPage /> : <Navigate to="/" replace />} />
+          <Route path="conquistas/criar" element={role === 'personal' ? <CriarConquistaPage /> : <Navigate to="/" replace />} />
           <Route path="chat" element={<ChatPage />} />
         </Route>
         

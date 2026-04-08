@@ -1,8 +1,10 @@
-import { useState, useMemo } from 'react'
-import { Trophy, Star, Target, TrendingUp, Calendar } from 'lucide-react'
-import AchievementCard from '../components/achievements/AchievementCard'
-import { achievements, getUnlockedCount, getTotalXP, getProgressByCategory } from '../data/achievementsData'
-import './Conquistas.css'
+import { useState, useMemo, useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { Trophy, Star, Target, TrendingUp, Calendar, Loader2, User } from 'lucide-react'
+import { achievements as templateAchievements, getUnlockedCount, getTotalXP, getProgressByCategory, type Achievement } from '../data/achievementsData'
+import { useAuth } from '../context/AuthContext'
+import { supabase } from '../lib/supabase'
+import { getPresenceStats } from '../lib/presenceManager'
 
 const categories = [
   { value: 'all', label: 'Todas', icon: Trophy },
@@ -12,100 +14,232 @@ const categories = [
   { value: 'marco', label: 'Marcos', icon: Calendar },
 ]
 
-export default function ConquistasPage() {
-  const [filter, setFilter] = useState('all')
-
-  const stats = useMemo(() => ({
-    unlocked: getUnlockedCount(achievements),
-    total: achievements.length,
-    totalXP: getTotalXP(achievements),
-    consistencia: getProgressByCategory(achievements, 'consistencia'),
-    volume: getProgressByCategory(achievements, 'volume'),
-    evolucao: getProgressByCategory(achievements, 'evolucao'),
-    marco: getProgressByCategory(achievements, 'marco'),
-  }), [])
-
-  const filteredAchievements = useMemo(() => {
-    if (filter === 'all') return achievements
-    return achievements.filter(a => a.category === filter)
-  }, [filter])
-
-  const unlockedPercent = Math.round((stats.unlocked / stats.total) * 100)
+function ModernAchievementCard({ achievement }: { achievement: Achievement }) {
+  const isUnlocked = achievement.unlocked
+  const target = achievement.target || 1
+  const progress = achievement.progress || 0
+  const percent = Math.min((progress / target) * 100, 100)
 
   return (
-    <div className="conquistas-page">
-      <div className="conquistas-header">
-        <div className="conquistas-title">
-          <h2>Conquistas</h2>
-          <span className="conquistas-subtitle">
-            {stats.unlocked}/{stats.total} desbloqueadas
-          </span>
+    <div className={`bg-white/5 backdrop-blur-xl border ${isUnlocked ? 'border-purple-500/40 bg-purple-500/10' : 'border-white/10 opacity-60'} rounded-2xl p-5 flex flex-col gap-3 transition-all duration-300 hover:scale-[1.02]`}>
+      <div className="flex items-start gap-4">
+        <div className="w-12 h-12 shrink-0 flex items-center justify-center rounded-xl bg-purple-500/20 text-2xl">
+          {achievement.icon}
         </div>
-        <div className="conquistas-xp">
-          <span className="xp-value">{stats.totalXP}</span>
-          <span className="xp-label">XP Total</span>
+        <div className="flex-1">
+          <div className="flex justify-between items-start">
+            <h4 className="font-semibold text-white">{achievement.title}</h4>
+            <span className="text-xs font-medium text-purple-400 bg-purple-400/10 px-2 py-1 rounded-lg">
+              +{achievement.xp} XP
+            </span>
+          </div>
+          <p className="text-sm text-gray-400 mt-1">{achievement.description}</p>
         </div>
       </div>
 
-      <div className="conquistas-overview">
-        <div className="overview-progress">
-          <div className="progress-info">
-            <span>Progresso Geral</span>
-            <span>{unlockedPercent}%</span>
+      {!isUnlocked && achievement.target && (
+        <div className="mt-2">
+          <div className="flex justify-between text-xs text-gray-400 mb-1">
+            <span>Progresso</span>
+            <span>{progress}/{target}</span>
           </div>
-          <div className="progress-bar">
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
             <div 
-              className="progress-fill" 
+              className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-500"
+              style={{ width: `${percent}%` }}
+            />
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TelaAluno({ user }: { user: any }) {
+  const [filter, setFilter] = useState('all')
+  const [activeAchievements, setActiveAchievements] = useState<Achievement[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const loadUserAchievements = async () => {
+      try {
+        if (!user) return
+
+        const presence = await getPresenceStats(user.id)
+        
+        const { data: sessions } = await supabase
+          .from('workout_sessions')
+          .select('id, created_at')
+          .eq('user_id', user.id)
+          .eq('status', 'completed')
+
+        const totalSessions = sessions?.length || 0
+        
+        let totalSets = 0
+        if (sessions && sessions.length > 0) {
+          const sessionIds = sessions.map(s => s.id)
+          
+          for (let i = 0; i < sessionIds.length; i += 100) {
+            const chunk = sessionIds.slice(i, i + 100)
+            const { count } = await supabase
+              .from('workout_sets')
+              .select('id', { count: 'exact', head: true })
+              .in('session_id', chunk)
+              
+            totalSets += (count || 0)
+          }
+        }
+
+        const { count: presencesCount } = await supabase
+          .from('workout_presence')
+          .select('id', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+          
+        const lifetimePresences = presencesCount || presence.monthCount
+
+        const realAchievements = templateAchievements.map(ach => {
+          let progress = 0
+          
+          switch (ach.id) {
+            case 'first-workout': progress = totalSessions > 0 ? 1 : 0; break;
+            case 'week-streak': progress = presence.currentStreak; break;
+            case 'month-streak': progress = presence.currentStreak; break;
+            case 'first-100-series':
+            case 'first-500-series':
+            case 'volume-king': progress = totalSets; break;
+            case 'first-month': progress = lifetimePresences; break;
+            case 'early-bird':
+              progress = sessions?.filter(s => new Date(s.created_at).getHours() < 7).length || 0
+              break
+            case 'weekend-warrior':
+              const weekendSessions = sessions?.filter(s => {
+                const day = new Date(s.created_at).getDay()
+                return day === 0 || day === 6
+              }).length || 0
+              progress = weekendSessions > 0 ? 2 : 0
+              break
+            default: progress = 0
+          }
+
+          const target = ach.target || 1
+          const unlocked = progress >= target
+
+          return {
+            ...ach,
+            progress,
+            unlocked,
+            unlockedAt: unlocked ? new Date().toISOString() : undefined
+          }
+        })
+
+        setActiveAchievements(realAchievements)
+      } catch (err) {
+        console.error("Erro ao carregar conquistas reais:", err)
+        setActiveAchievements(templateAchievements)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    if (user) loadUserAchievements()
+  }, [user])
+
+  const stats = useMemo(() => ({
+    unlocked: getUnlockedCount(activeAchievements),
+    total: activeAchievements.length,
+    totalXP: getTotalXP(activeAchievements),
+  }), [activeAchievements])
+
+  const filteredAchievements = useMemo(() => {
+    if (filter === 'all') return activeAchievements
+    return activeAchievements.filter(a => a.category === filter)
+  }, [filter, activeAchievements])
+
+  const unlockedPercent = stats.total > 0 ? Math.round((stats.unlocked / stats.total) * 100) : 0
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64 text-purple-500">
+        <Loader2 className="animate-spin" size={32} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto">
+      <div className="flex justify-between items-center flex-wrap gap-4">
+        <div>
+          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-1">Conquistas</h2>
+          <span className="text-gray-400 text-sm">
+            {stats.unlocked}/{stats.total} desbloqueadas
+          </span>
+        </div>
+        <div className="flex flex-col items-center px-6 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl">
+          <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">{stats.totalXP}</span>
+          <span className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wider">XP Total</span>
+        </div>
+      </div>
+
+      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 md:p-6 flex flex-col gap-6">
+        <div className="flex flex-col gap-2">
+          <div className="flex justify-between text-sm text-gray-400">
+            <span>Progresso Geral</span>
+            <span className="font-semibold text-white">{unlockedPercent}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+            <div 
+              className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500" 
               style={{ width: `${unlockedPercent}%` }}
             />
           </div>
         </div>
 
-        <div className="overview-stats">
-          <div className="overview-stat">
-            <div className="stat-icon" style={{ background: 'rgba(16, 185, 129, 0.15)', color: '#10b981' }}>
-              <Trophy size={18} />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+            <div className="w-10 h-10 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+              <Trophy size={20} />
             </div>
-            <div className="stat-info">
-              <span className="stat-value">{stats.unlocked}</span>
-              <span className="stat-label">Desbloqueadas</span>
-            </div>
-          </div>
-          <div className="overview-stat">
-            <div className="stat-icon" style={{ background: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6' }}>
-              <Star size={18} />
-            </div>
-            <div className="stat-info">
-              <span className="stat-value">{stats.total - stats.unlocked}</span>
-              <span className="stat-label">Restantes</span>
+            <div className="flex flex-col">
+              <span className="font-bold text-white leading-tight text-lg">{stats.unlocked}</span>
+              <span className="text-[10px] md:text-xs text-gray-400">Desbloqueadas</span>
             </div>
           </div>
-          <div className="overview-stat">
-            <div className="stat-icon" style={{ background: 'rgba(245, 158, 11, 0.15)', color: '#f59e0b' }}>
-              <TrendingUp size={18} />
+          <div className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+            <div className="w-10 h-10 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+              <Star size={20} />
             </div>
-            <div className="stat-info">
-              <span className="stat-value">{stats.totalXP}</span>
-              <span className="stat-label">XP Ganho</span>
+            <div className="flex flex-col">
+              <span className="font-bold text-white leading-tight text-lg">{stats.total - stats.unlocked}</span>
+              <span className="text-[10px] md:text-xs text-gray-400">Restantes</span>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+            <div className="w-10 h-10 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+              <TrendingUp size={20} />
+            </div>
+            <div className="flex flex-col">
+              <span className="font-bold text-white leading-tight text-lg">{stats.totalXP}</span>
+              <span className="text-[10px] md:text-xs text-gray-400">XP Ganho</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div className="conquistas-categories">
+      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none snap-x">
         {categories.map(cat => {
           const Icon = cat.icon
-          const progress = cat.value !== 'all' ? getProgressByCategory(achievements, cat.value) : null
+          const progress = cat.value !== 'all' ? getProgressByCategory(activeAchievements, cat.value) : null
+          const isActive = filter === cat.value
           return (
             <button
               key={cat.value}
-              className={`category-btn ${filter === cat.value ? 'active' : ''}`}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap snap-start ${isActive ? 'bg-purple-600 text-white border-transparent' : 'bg-white/5 text-gray-400 border border-white/10 hover:border-purple-500/50 hover:text-white'}`}
               onClick={() => setFilter(cat.value)}
             >
               <Icon size={16} />
               <span>{cat.label}</span>
               {progress && (
-                <span className="category-count">
+                <span className="text-xs opacity-70 ml-1">
                   {progress.unlocked}/{progress.total}
                 </span>
               )}
@@ -114,15 +248,119 @@ export default function ConquistasPage() {
         })}
       </div>
 
-      <div className="conquistas-grid">
-        {filteredAchievements.map((achievement, index) => (
-          <AchievementCard 
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {filteredAchievements.map((achievement) => (
+          <ModernAchievementCard 
             key={achievement.id} 
             achievement={achievement} 
-            index={index}
           />
         ))}
       </div>
+    </div>
+  )
+}
+
+function TelaPersonal() {
+  const navigate = useNavigate()
+  const [alunos, setAlunos] = useState<any[]>([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(() => {
+    const fetchAlunos = async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('id, name, plan_expires_at')
+        .eq('role', 'aluno')
+      
+      if (data) {
+        const formatted = data.map(aluno => {
+          const isExpired = aluno.plan_expires_at && new Date(aluno.plan_expires_at) < new Date()
+          return {
+            ...aluno,
+            status: isExpired ? 'baixa_atividade' : 'ativo'
+          }
+        })
+        setAlunos(formatted)
+      }
+      setLoading(false)
+    }
+    fetchAlunos()
+  }, [])
+
+  if (loading) {
+    return (
+      <div className="flex justify-center items-center h-64 text-purple-500">
+        <Loader2 className="animate-spin" size={32} />
+      </div>
+    )
+  }
+
+  return (
+    <div className="w-full max-w-5xl mx-auto">
+      <div className="flex flex-col mb-6">
+        <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-2">Gestão de Conquistas</h2>
+        <p className="text-gray-400">Acompanhe o progresso e gerencie conquistas dos seus alunos</p>
+      </div>
+      
+      <div className="flex flex-col gap-4 md:gap-6">
+        {alunos.map(aluno => (
+          <div
+            key={aluno.id}
+            className="w-full bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-4 md:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-4 transition-all duration-300 hover:scale-[1.01]"
+          >
+            {/* Lado esquerdo: info do aluno */}
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 rounded-xl bg-purple-500/20 flex items-center justify-center text-purple-400 shrink-0">
+                <User size={24} />
+              </div>
+              <div className="flex flex-col gap-1">
+                <h3 className="text-base md:text-lg font-semibold text-white">{aluno.name || 'Aluno'}</h3>
+                <span className="text-sm text-gray-400">Progresso calculado internamente</span>
+                <span className={`mt-1 text-xs ${aluno.status === 'ativo' ? 'text-green-400' : 'text-amber-500'}`}>
+                  {aluno.status === 'ativo' ? '● Ativo' : '● Baixa atividade'}
+                </span>
+              </div>
+            </div>
+
+            {/* Lado direito: botões */}
+            <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
+              <button
+                onClick={() => navigate(`/conquistas/aluno/${aluno.id}`)}
+                className="w-full sm:w-auto h-10 px-4 rounded-lg flex items-center justify-center text-sm font-medium bg-white/5 hover:bg-white/10 transition-all duration-300 text-white"
+              >
+                Ver conquistas
+              </button>
+              <button
+                onClick={() => navigate(`/conquistas/criar?aluno=${aluno.id}`)}
+                className="w-full sm:w-auto h-10 px-4 rounded-lg flex items-center justify-center text-sm font-medium bg-gradient-to-r from-purple-600 to-indigo-600 text-white hover:scale-105 transition-all duration-300"
+              >
+                Criar conquista
+              </button>
+            </div>
+          </div>
+        ))}
+        {alunos.length === 0 && !loading && (
+          <div className="text-center p-8 bg-white/5 border border-white/10 rounded-2xl">
+            <p className="text-gray-400">Nenhum aluno encontrado.</p>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+export default function ConquistasPage() {
+  const { user, role } = useAuth()
+  const isPersonal = role === 'personal'
+  const isAluno = role === 'aluno'
+
+  return (
+    <div className="text-white">
+      {isAluno && <TelaAluno user={user} />}
+      {isPersonal && <TelaPersonal />}
+      {!isAluno && !isPersonal && (
+        <div className="text-center text-gray-400 pt-10">Acesso restrito</div>
+      )}
     </div>
   )
 }
