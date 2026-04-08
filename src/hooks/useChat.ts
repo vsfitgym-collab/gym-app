@@ -31,13 +31,7 @@ export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): 
   }, [messages])
 
   const loadMessages = useCallback(async () => {
-    if (!currentUserId || !otherUserId) {
-      setLoading(false)
-      return
-    }
-
     setLoading(true)
-    console.log('Chat: Carregando mensagens entre', currentUserId, 'e', otherUserId)
     
     try {
       const { data, error } = await supabase
@@ -50,7 +44,6 @@ export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): 
         console.error('Chat: Erro ao carregar mensagens:', error)
         setMessages([])
       } else {
-        console.log('Chat: Mensagens carregadas:', data?.length || 0)
         setMessages(data || [])
       }
     } catch (err) {
@@ -62,7 +55,6 @@ export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): 
   }, [currentUserId, otherUserId])
 
   const loadAlunos = useCallback(async () => {
-    console.log('Chat: Carregando lista de alunos...')
     try {
       const { data, error } = await supabase
         .from('profiles')
@@ -73,7 +65,6 @@ export function useChat({ currentUserId, role, selectedUser }: UseChatOptions): 
         console.error('Chat: Erro ao carregar alunos:', error)
         setConversations([])
       } else {
-        console.log('Chat: Alunos carregados:', data?.length || 0)
         setConversations(data?.map(p => ({
           id: p.id,
           name: p.name || 'Aluno',

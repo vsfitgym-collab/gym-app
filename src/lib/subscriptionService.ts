@@ -76,7 +76,7 @@ export const getSubscription = async (userId: string): Promise<Subscription | nu
       .from('subscriptions')
       .select('*')
       .eq('user_id', userId)
-      .single()
+      .maybeSingle()
 
     if (error && error.code !== 'PGRST116') {
       console.warn('Subscription fetch error (non-critical):', error.message)

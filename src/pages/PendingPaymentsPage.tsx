@@ -39,7 +39,6 @@ export default function PendingPaymentsPage() {
 
   useEffect(() => {
     if (!user) {
-      console.log('PendingPaymentsPage: User not loaded, skipping...')
       return
     }
     loadPayments()
@@ -48,7 +47,6 @@ export default function PendingPaymentsPage() {
   const loadPayments = async () => {
     if (!user) return
     setLoading(true)
-    console.log('PendingPaymentsPage: Loading payments...')
 
     try {
       const { data: paymentsData, error: paymentsError } = await supabase
@@ -63,7 +61,6 @@ export default function PendingPaymentsPage() {
       }
 
       if (!paymentsData || paymentsData.length === 0) {
-        console.log('PendingPaymentsPage: Nenhum pagamento pendente')
         setPayments([])
         setLoading(false)
         return
@@ -86,7 +83,6 @@ export default function PendingPaymentsPage() {
       }
 
       setPayments(enrichedPayments)
-      console.log('PendingPaymentsPage: Payments loaded:', enrichedPayments.length)
     } catch (error) {
       console.error('PendingPaymentsPage: Error:', error)
     } finally {

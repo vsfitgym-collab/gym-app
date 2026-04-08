@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react'
+import React, { createContext, useContext, useEffect, useState, useCallback } from 'react'
 import type { User, Session } from '@supabase/supabase-js'
 import { supabase } from '../lib/supabase'
 import type { AuthContextType, UserRole } from '../types'
@@ -63,7 +63,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const init = async () => {
-      console.log('AuthContext: Initializing...')
       try {
         const { data: { session } } = await supabase.auth.getSession()
         
@@ -79,7 +78,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
 
     const timeoutId = setTimeout(() => {
-      console.log('AuthContext: Timeout reached, forcing loading=false')
       setLoading(false)
     }, 8000)
 
@@ -125,7 +123,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('Sign out error:', error)
     }
-  }
   }
 
   const value: AuthContextType = {

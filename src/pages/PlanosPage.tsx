@@ -14,7 +14,11 @@ import {
   Copy,
   CheckCircle2,
   Clock,
+  Plus,
+  Pencil,
+  Trash2,
 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { type Plan } from '../lib/subscriptionService'
 import { useSubscription } from '../hooks/useSubscription'
 import { supabase } from '../lib/supabase'
@@ -107,7 +111,9 @@ interface ChatMessage {
 }
 
 export default function PlanosPage() {
-  const { user } = useAuth()
+  const { user, role, loading } = useAuth()
+  const navigate = useNavigate()
+  const isAdmin = role === 'personal'
   const { plan: currentPlan, isPremium: isSubscribed, refresh: refreshSubscription } = useSubscription()
   const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null)
   const [showAssistant, setShowAssistant] = useState(false)
@@ -119,6 +125,14 @@ export default function PlanosPage() {
   const [planJustApproved, setPlanJustApproved] = useState(false)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
+
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#8b5cf6' }}>
+        <Loader2 className="spinner" size={32} />
+      </div>
+    )
+  }
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
@@ -138,7 +152,7 @@ export default function PlanosPage() {
           .eq('status', 'approved')
           .order('created_at', { ascending: false })
           .limit(1)
-          .single()
+          .maybeSingle()
 
         if (payment) {
           await refreshSubscription()
@@ -162,7 +176,7 @@ export default function PlanosPage() {
       .select('id')
       .eq('user_id', user.id)
       .eq('status', 'pending')
-      .single()
+      .maybeSingle()
     
     setHasPendingPayment(!!data)
   }
@@ -352,9 +366,15 @@ Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
     <div className="planos-page">
       <div className="planos-header">
         <div className="planos-title">
-          <h2>Escolha seu Plano</h2>
-          <p>Selecione o plano ideal para sua jornada fitness</p>
+          <h2>{isAdmin ? 'Gerenciar Planos' : 'Escolha seu Plano'}</h2>
+          <p>{isAdmin ? 'Configure os planos disponíveis para seus alunos' : 'Selecione o plano ideal para sua jornada fitness'}</p>
         </div>
+        {isAdmin && (
+          <button className="btn-create-plan" onClick={() => navigate('/planos/criar')}>
+            <Plus size={18} />
+            Novo Plano
+          </button>
+        )}
         {planJustApproved && (
           <div className="plan-approved-toast">
             <CheckCircle2 size={16} />
@@ -414,28 +434,52 @@ Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
                 ))}
               </div>
 
-              <button
-                className={`plano-btn ${p.popular ? 'btn-premium' : p.id === 'basic' ? 'btn-basic' : 'btn-free'}`}
-                disabled={isCurrentPlan || hasPendingPayment}
-                onClick={() => startAssistant(p.id)}
-              >
-                {hasPendingPayment ? (
+              <div className="plano-actions">
+                {isAdmin ? (
                   <>
-                    <Clock size={16} />
-                    Pagamento pendente
-                  </>
-                ) : isCurrentPlan ? (
-                  <>
-                    <CheckCircle2 size={16} />
-                    Plano atual
+                    <button 
+                      className="btn-action-edit"
+                      onClick={() => navigate(`/planos/editar/${p.id}`)}
+                    >
+                      <Pencil size={16} />
+                      Editar
+                    </button>
+                    <button 
+                      className="btn-action-delete"
+                      onClick={() => {
+                        if(confirm('Tem certeza que deseja excluir este plano?')) {
+                          // Lógica de exclusão aqui
+                        }
+                      }}
+                    >
+                      <Trash2 size={16} />
+                    </button>
                   </>
                 ) : (
-                  <>
-                    <Bot size={16} />
-                    Assinar com IA
-                  </>
+                  <button
+                    className={`plano-btn ${p.popular ? 'btn-premium' : p.id === 'basic' ? 'btn-basic' : 'btn-free'}`}
+                    disabled={isCurrentPlan || hasPendingPayment}
+                    onClick={() => startAssistant(p.id)}
+                  >
+                    {hasPendingPayment ? (
+                      <>
+                        <Clock size={16} />
+                        Pagamento pendente
+                      </>
+                    ) : isCurrentPlan ? (
+                      <>
+                        <CheckCircle2 size={16} />
+                        Plano atual
+                      </>
+                    ) : (
+                      <>
+                        <Bot size={16} />
+                        Assinar com IA
+                      </>
+                    )}
+                  </button>
                 )}
-              </button>
+              </div>
             </div>
           )
         })}
