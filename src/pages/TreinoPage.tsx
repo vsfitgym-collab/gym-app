@@ -355,15 +355,6 @@ export default function TreinoPage() {
     )
   }
 
-  if (!user) {
-    return (
-      <div className="treino-fullscreen">
-        <div className="treino-loading">Acesso não autorizado</div>
-        <button className="btn-sair" onClick={() => navigate('/treinos')}>Voltar</button>
-      </div>
-    )
-  }
-
   if (treinoConcluido) {
     return (
       <div className="treino-fullscreen treino-concluido">
