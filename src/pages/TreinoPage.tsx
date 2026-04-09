@@ -84,7 +84,7 @@ export default function TreinoPage() {
     }
 
     const foundWorkout = localWorkouts.find(w => w.id === id)
-    
+
     if (foundWorkout) {
       setTreinoNome(foundWorkout.name)
       const exerciciosLocal: Exercicio[] = [
@@ -93,10 +93,10 @@ export default function TreinoPage() {
         { id: '3', nome: 'Agachamento', muscle_group: 'Perna', gif_url: null, sets: 4, reps: '12-15', rest_seconds: 120 },
         { id: '4', nome: 'Desenvolvimento', muscle_group: 'Ombro', gif_url: null, sets: 3, reps: '10-12', rest_seconds: 60 },
       ].slice(0, foundWorkout.exercises_count || 4)
-      
+
       setExercicios(exerciciosLocal)
       setLoading(false)
-      
+
       if (user) {
         const activeSession = await getActiveSession(user.id, id)
         if (activeSession) {
@@ -183,13 +183,13 @@ export default function TreinoPage() {
   const seriesConcluidas = exercicios
     .slice(0, exercicioAtual)
     .reduce((acc, ex) => acc + ex.sets, 0)
-  const progressoPercentual = totalSeries > 0 
-    ? Math.round(((seriesConcluidas + (serieAtual - 1)) / totalSeries) * 100) 
+  const progressoPercentual = totalSeries > 0
+    ? Math.round(((seriesConcluidas + (serieAtual - 1)) / totalSeries) * 100)
     : 0
 
   const autoSaveProgress = useCallback((exerciseIndex: number, setNumber: number) => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    
+
     saveTimeoutRef.current = setTimeout(async () => {
       if (!sessionId || !user) return
       await Promise.all([
@@ -201,7 +201,7 @@ export default function TreinoPage() {
           reps_completed: parseInt(exercicios[exerciseIndex]?.reps?.split('-')[0] || '0'),
         }),
       ])
-      
+
       setSavedIndicator(true)
       setTimeout(() => setSavedIndicator(false), 2000)
     }, 1000)
@@ -209,7 +209,7 @@ export default function TreinoPage() {
 
   const ensureSession = useCallback(async () => {
     if (sessionId || !user || !id) return sessionId
-    
+
     const newSession = await createSession(user.id, id)
     if (newSession) {
       setSessionId(newSession.id)
@@ -221,7 +221,7 @@ export default function TreinoPage() {
   const tocarSom = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.currentTime = 0
-      audioRef.current.play().catch(() => {})
+      audioRef.current.play().catch(() => { })
     }
   }, [])
 
@@ -229,9 +229,9 @@ export default function TreinoPage() {
     setTempoRestante(duracao)
     setDescansoAtivo(true)
     setMostrarProximo(false)
-    
+
     if (timerRef.current) clearInterval(timerRef.current)
-    
+
     timerRef.current = window.setInterval(() => {
       setTempoRestante((prev) => {
         if (prev <= 1) {
@@ -277,9 +277,9 @@ export default function TreinoPage() {
 
   const iniciarSerie = async () => {
     if (!exercicio) return
-    
+
     await ensureSession()
-    
+
     if (!isUltimaSerie) {
       iniciarDescanso(exercicio.rest_seconds)
     } else {
@@ -329,11 +329,11 @@ export default function TreinoPage() {
   const sairTreino = async () => {
     if (timerRef.current) clearInterval(timerRef.current)
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
-    
+
     if (sessionId && !treinoConcluido) {
       await abandonSession(sessionId)
     }
-    
+
     navigate('/treinos')
   }
 
@@ -368,7 +368,7 @@ export default function TreinoPage() {
     return (
       <div className="treino-fullscreen treino-concluido">
         <div className="concluido-bg-glow" />
-        
+
         <div className="concluido-content">
           {/* Header - Check Icon */}
           <div className="concluido-header">
@@ -462,12 +462,12 @@ export default function TreinoPage() {
   }
 
   if (descansoAtivo || mostrarProximo) {
-    const proximoEx = isUltimaSerie && !isUltimoExercicio 
-      ? exercicios[exercicioAtual + 1]?.nome 
+    const proximoEx = isUltimaSerie && !isUltimoExercicio
+      ? exercicios[exercicioAtual + 1]?.nome
       : `Série ${serieAtual + 1}`
 
-    const totalDescanso = isUltimaSerie && !isUltimoExercicio 
-      ? exercicios[exercicioAtual + 1]?.rest_seconds 
+    const totalDescanso = isUltimaSerie && !isUltimoExercicio
+      ? exercicios[exercicioAtual + 1]?.rest_seconds
       : exercicio?.rest_seconds
 
     return (
@@ -478,7 +478,7 @@ export default function TreinoPage() {
 
         <div className="descanso-content">
           <span className="descanso-label">DESCANSO</span>
-          
+
           <div className="contador-circular-grande">
             <svg viewBox="0 0 200 200">
               <circle className="circular-bg" cx="100" cy="100" r="90" />
@@ -489,8 +489,8 @@ export default function TreinoPage() {
                 r="90"
                 style={{
                   strokeDasharray: 2 * Math.PI * 90,
-                  strokeDashoffset: totalDescanso > 0 
-                    ? ((totalDescanso - tempoRestante) / totalDescanso) * 2 * Math.PI * 90 
+                  strokeDashoffset: totalDescanso > 0
+                    ? ((totalDescanso - tempoRestante) / totalDescanso) * 2 * Math.PI * 90
                     : 0
                 }}
               />
@@ -541,8 +541,8 @@ export default function TreinoPage() {
       {/* Top Progress Bar */}
       <div className="treino-top-bar">
         <div className="treino-progress-bar">
-          <div 
-            className="treino-progress-fill" 
+          <div
+            className="treino-progress-fill"
             style={{ width: `${progressoPercentual}%` }}
           />
         </div>
@@ -604,7 +604,6 @@ export default function TreinoPage() {
       {/* Bottom Fixed Actions */}
       <div className="treino-bottom-bar">
         {isPersonal && (
-        {isPersonal && (
           <div className="exercise-dots">
             {exercicios.map((_, index) => (
               <button
@@ -620,28 +619,27 @@ export default function TreinoPage() {
             ))}
           </div>
         )}
-        )}
 
         <div className="action-buttons">
           {isPersonal && (
-            <button 
-              className="btn-nav" 
+            <button
+              className="btn-nav"
               onClick={exercicioAnterior}
               disabled={exercicioAtual === 0}
             >
               <ChevronLeft size={22} />
             </button>
           )}
-          
+
           <button className="btn-main-action" onClick={iniciarSerie}>
-            {isUltimaSerie 
-              ? (isUltimoExercicio ? 'FINALIZAR TREINO' : 'PRÓXIMO EXERCÍCIO') 
+            {isUltimaSerie
+              ? (isUltimoExercicio ? 'FINALIZAR TREINO' : 'PRÓXIMO EXERCÍCIO')
               : 'PRÓXIMA SÉRIE'}
           </button>
-          
+
           {isPersonal && (
-            <button 
-              className="btn-nav" 
+            <button
+              className="btn-nav"
               onClick={proximoExercicio}
               disabled={isUltimoExercicio}
             >
