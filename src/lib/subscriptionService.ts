@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 
-export type Plan = 'free' | 'basic' | 'premium'
-export type SubscriptionStatus = 'active' | 'canceled' | 'expired' | 'trialing'
+export type Plan = 'free' | 'basic' | 'pro' | 'premium'
+export type SubscriptionStatus = 'active' | 'canceled' | 'expired' | 'trial'
 
 export interface Subscription {
   id: string
@@ -47,15 +47,26 @@ export const planLimits: Record<Plan, PlanLimits> = {
     canCreateUnlimitedWorkouts: false,
   },
   basic: {
-    maxWorkouts: 5,
+    maxWorkouts: 3,
     maxExercisesPerWorkout: 15,
-    hasAnalytics: true,
+    hasAnalytics: false,
     hasFinance: false,
     hasPresenceHistory: true,
-    hasCustomExercises: false,
+    hasCustomExercises: true,
     hasExport: false,
     maxStudents: 10,
     canCreateUnlimitedWorkouts: false,
+  },
+  pro: {
+    maxWorkouts: Infinity,
+    maxExercisesPerWorkout: Infinity,
+    hasAnalytics: false,
+    hasFinance: false,
+    hasPresenceHistory: true,
+    hasCustomExercises: true,
+    hasExport: false,
+    maxStudents: 20,
+    canCreateUnlimitedWorkouts: true,
   },
   premium: {
     maxWorkouts: Infinity,
@@ -92,11 +103,14 @@ export const isPremium = async (userId: string): Promise<boolean> => {
   const sub = await getSubscription(userId)
   if (!sub) return false
   
-  if ((sub.plan === 'premium' || sub.plan === 'basic') && sub.status === 'active') return true
+  if (sub.status === 'active') {
+    const p = sub.plan.toLowerCase()
+    if (p.includes('premium') || p.includes('pro') || p.includes('basic')) return true
+  }
   
-    if (sub.status === 'trialing' && sub.trial_ends_at) {
-      return new Date(sub.trial_ends_at) > new Date()
-    }
+  if (sub.status === 'trial' && sub.trial_ends_at) {
+    return new Date(sub.trial_ends_at) > new Date()
+  }
   
   return false
 }
@@ -106,11 +120,17 @@ export const getPlan = async (userId: string): Promise<Plan> => {
     const sub = await getSubscription(userId)
     if (!sub) return 'free'
     
-    if (sub.status === 'trialing' && sub.trial_ends_at) {
-      if (new Date(sub.trial_ends_at) > new Date()) return 'free'
+    if (sub.status === 'trial' && sub.trial_ends_at) {
+      if (new Date(sub.trial_ends_at) > new Date()) return 'premium'
     }
     
-    if (sub.status === 'active') return sub.plan
+    if (sub.status === 'active') {
+      const p = sub.plan.toLowerCase()
+      if (p.includes('premium')) return 'premium'
+      if (p.includes('pro')) return 'pro'
+      if (p.includes('basic') || p.includes('básico')) return 'basic'
+      return sub.plan as Plan
+    }
     
     return 'free'
   } catch {
@@ -227,7 +247,7 @@ export const checkFeatureAccess = async (
 }
 
 export const getTrialDaysRemaining = (subscription: Subscription | null): number => {
-  if (!subscription || subscription.status !== 'trialing' || !subscription.trial_ends_at) return 0
+  if (!subscription || subscription.status !== 'trial' || !subscription.trial_ends_at) return 0
   const remaining = new Date(subscription.trial_ends_at).getTime() - Date.now()
   return Math.max(0, Math.ceil(remaining / (1000 * 60 * 60 * 24)))
 }

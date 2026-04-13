@@ -19,6 +19,8 @@ import {
   X,
   ChevronDown,
   Edit2,
+  Clock,
+  Layers
 } from 'lucide-react'
 import { fetchExercises, getMockExercises } from '../lib/exerciseApi'
 import type { Exercise } from '../lib/exerciseTranslations'
@@ -37,6 +39,9 @@ interface ExercicioSelecionado {
 
 interface Treino {
   nome: string
+  level: string
+  duration_minutes: number
+  is_custom_duration: boolean
   exercises: ExercicioSelecionado[]
 }
 
@@ -66,8 +71,12 @@ export default function CriarTreinoPage() {
 
   const [treino, setTreino] = useState<Treino>({
     nome: '',
+    level: 'iniciante',
+    duration_minutes: 45,
+    is_custom_duration: false,
     exercises: []
   })
+  
   const [salvando, setSalvando] = useState(false)
   const [sucesso, setSucesso] = useState(false)
   const [showSelector, setShowSelector] = useState(false)
@@ -76,6 +85,17 @@ export default function CriarTreinoPage() {
   const [loadingExercises, setLoadingExercises] = useState(false)
   const [selectedFilter, setSelectedFilter] = useState('all')
   const [loading, setLoading] = useState(isEditMode)
+
+  const getComputedDuration = () => {
+    if (treino.exercises.length === 0) return 0
+    const totalSecs = treino.exercises.reduce((acc, ex) => {
+      const match = String(ex.repeticoes).match(/\d+/g)
+      let reps = 12
+      if (match) reps = Math.max(...match.map(Number))
+      return acc + (ex.series * (reps * 2) + ex.descanso)
+    }, 0)
+    return Math.ceil(totalSecs / 60)
+  }
 
   useEffect(() => {
     if (isEditMode) {
@@ -133,6 +153,9 @@ export default function CriarTreinoPage() {
 
       setTreino({
         nome: treinoData.name,
+        level: treinoData.level || 'intermediario',
+        duration_minutes: treinoData.duration_minutes || 45,
+        is_custom_duration: treinoData.is_custom_duration || false,
         exercises,
       })
     } catch (error) {
@@ -167,7 +190,6 @@ export default function CriarTreinoPage() {
   })
 
   const selecionarExercicio = (exercise: Exercise) => {
-    // Check exercise limit before adding
     if (!isPremium && treino.exercises.length >= limits.maxExercisesPerWorkout) {
       showLimitToast(`Limite de ${limits.maxExercisesPerWorkout} exercícios atingido. Faça upgrade para adicionar mais!`)
       return
@@ -245,7 +267,6 @@ export default function CriarTreinoPage() {
       return
     }
 
-    // Check exercise limit before saving
     if (!isEditMode && user) {
       const limitCheck = await checkExerciseLimit(user.id, treino.exercises.length)
       if (!limitCheck.allowed) {
@@ -255,7 +276,6 @@ export default function CriarTreinoPage() {
       }
     }
 
-    // Check workout limit for new workouts
     if (!isEditMode && user) {
       const { data: existingWorkouts } = await supabase
         .from('workouts')
@@ -276,7 +296,12 @@ export default function CriarTreinoPage() {
 
     try {
       if (isEditMode && id) {
-        await supabase.from('workouts').update({ name: treino.nome }).eq('id', id)
+        await supabase.from('workouts').update({ 
+          name: treino.nome,
+          level: treino.level,
+          duration_minutes: treino.is_custom_duration ? (treino.duration_minutes || getComputedDuration()) : null,
+          is_custom_duration: treino.is_custom_duration
+        }).eq('id', id)
 
         for (let i = 0; i < treino.exercises.length; i++) {
           const ex = treino.exercises[i]
@@ -317,7 +342,13 @@ export default function CriarTreinoPage() {
       } else {
         const { data: treinoData, error: treinoError } = await supabase
           .from('workouts')
-          .insert({ name: treino.nome })
+          .insert({ 
+            name: treino.nome,
+            level: treino.level,
+            duration_minutes: treino.is_custom_duration ? (treino.duration_minutes || getComputedDuration()) : null,
+            is_custom_duration: treino.is_custom_duration,
+            created_by: user?.id
+          })
           .select()
           .single()
 
@@ -386,35 +417,82 @@ export default function CriarTreinoPage() {
 
   return (
     <div className="criar-treino">
-      {/* Header */}
       <div className="criar-treino-header">
         <button className="btn-voltar" onClick={() => navigate('/treinos')}>
           <ArrowLeft size={24} />
         </button>
         <div className="header-info">
           <h2>{isEditMode ? 'Editar Treino' : 'Criar Novo Treino'}</h2>
-          <span>{isEditMode ? 'Edite as informações do treino' : 'Selecione exercícios da biblioteca'}</span>
+          <span>{isEditMode ? 'Edite as informações do treino' : 'Configure o novo treino'}</span>
         </div>
       </div>
 
-      {/* Nome do Treino */}
       <div className="section-card">
         <div className="section-label">
           <Dumbbell size={18} />
-          <span>Informações do Treino</span>
+          <span>Informações Principais</span>
         </div>
-        <div className="input-wrapper">
+        
+        <div className="form-group mb-4">
+          <label className="text-sm font-medium text-slate-300 mb-2 block">Nome do Treino</label>
           <input
             type="text"
-            className="input-nome"
+            className="input-nome !bg-white/5 !border !border-white/10 !rounded-xl !p-3 !text-white !w-full focus:!border-indigo-500"
             value={treino.nome}
             onChange={e => setTreino(prev => ({ ...prev, nome: e.target.value }))}
             placeholder="Ex: Treino A - Superior"
           />
         </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <div className="form-group">
+            <label className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2">
+              <Layers size={16} className="text-indigo-400" />
+              Nível
+            </label>
+            <select
+              className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-indigo-500 transition-colors"
+              value={treino.level}
+              onChange={e => setTreino(prev => ({ ...prev, level: e.target.value }))}
+            >
+              <option value="iniciante">Iniciante</option>
+              <option value="intermediario">Intermediário</option>
+              <option value="avancado">Avançado</option>
+            </select>
+          </div>
+
+          <div className="form-group">
+            <label className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2 justify-between">
+              <span className="flex items-center gap-2">
+                 <Clock size={16} className="text-indigo-400" />
+                 Duração (minutos)
+              </span>
+              <label className="flex items-center gap-2 cursor-pointer text-xs font-normal">
+                 <input 
+                    type="checkbox" 
+                    className="accent-indigo-500 w-4 h-4" 
+                    checked={treino.is_custom_duration} 
+                    onChange={e => setTreino(prev => ({ ...prev, is_custom_duration: e.target.checked }))} 
+                 />
+                 <span className={treino.is_custom_duration ? "text-indigo-400 font-bold" : "text-slate-400"}>Definir manual</span>
+              </label>
+            </label>
+            <input
+              type="number"
+              className={`w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white focus:outline-none transition-colors ${treino.is_custom_duration ? 'focus:border-indigo-500' : 'opacity-50 cursor-not-allowed text-indigo-300'}`}
+              value={treino.is_custom_duration ? treino.duration_minutes : getComputedDuration()}
+              onChange={e => treino.is_custom_duration ? setTreino(prev => ({ ...prev, duration_minutes: parseInt(e.target.value) || 0 })) : null}
+              disabled={!treino.is_custom_duration}
+              min={10}
+              max={180}
+            />
+            {!treino.is_custom_duration && (
+               <p className="text-xs text-slate-500 mt-1">Tempo estimado automaticamente pelos exercícios</p>
+            )}
+          </div>
+        </div>
       </div>
 
-      {/* Exercícios Section */}
       <div className="section-card exercicios-section">
         <div className="section-header">
           <div className="section-label">
@@ -524,7 +602,6 @@ export default function CriarTreinoPage() {
         )}
       </div>
 
-      {/* Actions */}
       <div className="criar-treino-actions">
         <button className="btn-cancelar" onClick={() => navigate('/treinos')}>
           Cancelar
@@ -548,7 +625,6 @@ export default function CriarTreinoPage() {
         </button>
       </div>
 
-      {/* Exercise Selector Modal */}
       {showSelector && (
         <div className="exercise-selector-overlay" onClick={() => setShowSelector(false)}>
           <div className="exercise-selector" onClick={e => e.stopPropagation()}>

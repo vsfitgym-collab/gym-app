@@ -13,6 +13,7 @@ import {
   getActiveSession,
 } from '../lib/workoutSessionManager'
 import PresenceCheckIn from '../components/PresenceCheckIn'
+import ProtectedFeature from '../components/ProtectedFeature'
 import './Treino.css'
 
 interface Exercicio {
@@ -25,7 +26,7 @@ interface Exercicio {
   rest_seconds: number
 }
 
-export default function TreinoPage() {
+function TreinoPageContent() {
   const navigate = useNavigate()
   const { id } = useParams()
   const { user } = useAuth()
@@ -140,15 +141,20 @@ export default function TreinoPage() {
         .eq('workout_id', id)
         .order('order_index', { ascending: true })
 
-      const formattedExercicios = (exerciciosData || []).map((wp: any) => ({
-        id: wp.exercises?.id || wp.id,
-        nome: wp.exercises?.name || '',
-        muscle_group: wp.exercises?.muscle_group || 'Geral',
-        gif_url: wp.exercises?.gif_url || null,
-        sets: wp.sets || 3,
-        reps: wp.reps || '10-12',
-        rest_seconds: wp.rest_seconds || 60
-      }))
+      const formattedExercicios = (exerciciosData || []).map((wp: any) => {
+        const exerciseArray = Array.isArray(wp.exercises) ? wp.exercises : (wp.exercises ? [wp.exercises] : [])
+        const exercise = exerciseArray[0]
+
+        return {
+          id: exercise?.id || wp.id,
+          nome: exercise?.name || 'Exercício não definido',
+          muscle_group: exercise?.muscle_group || 'Geral',
+          gif_url: exercise?.gif_url || null,
+          sets: wp.sets || 3,
+          reps: wp.reps || '10-12',
+          rest_seconds: wp.rest_seconds || 60
+        }
+      })
 
       if (formattedExercicios.length === 0) {
         const exerciciosLocal: Exercicio[] = [
@@ -640,5 +646,13 @@ export default function TreinoPage() {
         </div>
       </div>
     </div>
+  )
+}
+
+export default function TreinoPage() {
+  return (
+    <ProtectedFeature feature="Treinos Ativos">
+      <TreinoPageContent />
+    </ProtectedFeature>
   )
 }

@@ -1,7 +1,13 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { ArrowLeft, Save, Plus, X, CheckCircle2 } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
 import '../Planos.css'
+
+interface ItemDB {
+  id: string
+  nome: string
+}
 
 export default function CriarPlanoPage() {
   const navigate = useNavigate()
@@ -11,43 +17,105 @@ export default function CriarPlanoPage() {
   const [formData, setFormData] = useState({
     name: '',
     price: '',
+    duration: 30,
     description: '',
     popular: false,
-    features: [] as string[]
+    recomendado: false
   })
 
+  const [availableItems, setAvailableItems] = useState<ItemDB[]>([])
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
   const [newFeature, setNewFeature] = useState('')
+
+  useEffect(() => {
+    loadItems()
+  }, [])
+
+  const loadItems = async () => {
+    const { data } = await supabase.from('itens').select('*').order('nome')
+    if (data) setAvailableItems(data)
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     
-    // Simular salvamento
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    setLoading(false)
-    setShowSuccess(true)
-    setTimeout(() => {
-      setShowSuccess(false)
-      navigate('/planos')
-    }, 1500)
-  }
+    try {
+      // 1. Inserir o Plano
+      const { data: planoData, error: planoError } = await supabase
+        .from('planos')
+        .insert({
+          nome: formData.name,
+          descricao: formData.description,
+          preco: parseFloat(formData.price) || 0,
+          duracao_dias: formData.duration,
+          recomendado: formData.recomendado
+        })
+        .select()
+        .single()
 
-  const addFeature = () => {
-    if (newFeature.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        features: [...prev.features, newFeature.trim()]
-      }))
-      setNewFeature('')
+      if (planoError) throw planoError
+
+      // 2. Vincular os itens ao Plano
+      if (selectedItemIds.length > 0) {
+        const refs = selectedItemIds.map(itemId => ({
+          plano_id: planoData.id,
+          item_id: itemId
+        }))
+        const { error: itemsError } = await supabase.from('plano_itens').insert(refs)
+        if (itemsError) throw itemsError
+      }
+
+      setShowSuccess(true)
+      setTimeout(() => {
+        setShowSuccess(false)
+        navigate('/planos')
+      }, 1500)
+    } catch (err: any) {
+      console.error(err)
+      alert('Erro ao salvar plano: ' + err.message)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const removeFeature = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      features: prev.features.filter((_, i) => i !== index)
-    }))
+  const addFeature = async () => {
+    if (!newFeature.trim()) return
+    const nomeItem = newFeature.trim()
+    try {
+      const { data, error } = await supabase
+        .from('itens')
+        .insert({ nome: nomeItem })
+        .select()
+        .single()
+      
+      if (!error && data) {
+        setAvailableItems(prev => [...prev, data].sort((a,b) => a.nome.localeCompare(b.nome)))
+        setSelectedItemIds(prev => [...prev, data.id])
+      }
+    } catch {
+      // already exists maybe
+    }
+    setNewFeature('')
+    loadItems() // recarrega por segurança
+  }
+
+  const deleteFeature = async (id: string) => {
+    if (confirm('Tem certeza que deseja excluir este recurso? Isso vai remover essa marcação de todos os planos.')) {
+      try {
+        await supabase.from('itens').delete().eq('id', id)
+        setAvailableItems(prev => prev.filter(item => item.id !== id))
+        setSelectedItemIds(prev => prev.filter(itemId => itemId !== id))
+      } catch (err: any) {
+        alert('Erro ao excluir: ' + err.message)
+      }
+    }
+  }
+
+  const toggleItem = (id: string) => {
+    setSelectedItemIds(prev => 
+      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
+    )
   }
 
   return (
@@ -59,7 +127,7 @@ export default function CriarPlanoPage() {
         </button>
         <div className="header-titles">
           <h1>Novo Plano</h1>
-          <p>Crie um novo pacote de assinatura para seus alunos</p>
+          <p>Crie um pacote de assinatura real no banco de dados</p>
         </div>
       </div>
 
@@ -80,24 +148,37 @@ export default function CriarPlanoPage() {
 
           <div className="input-row">
             <div className="input-group">
-              <label>Preço Mensal (R$)</label>
+              <label>Preço Base (R$)</label>
               <input 
                 type="number" 
                 step="0.01"
+                min="0"
                 value={formData.price}
                 onChange={e => setFormData({...formData, price: e.target.value})}
                 placeholder="0.00"
                 required
               />
             </div>
+            
+            <div className="input-group">
+              <label>Duração (Dias)</label>
+              <input 
+                type="number" 
+                min="1"
+                value={formData.duration}
+                onChange={e => setFormData({...formData, duration: parseInt(e.target.value) || 0})}
+                required
+                placeholder="Ex: 7 para trial, 30 mensal"
+              />
+            </div>
             <div className="input-group checkbox">
-              <label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input 
                   type="checkbox" 
-                  checked={formData.popular}
-                  onChange={e => setFormData({...formData, popular: e.target.checked})}
+                  checked={formData.recomendado}
+                  onChange={e => setFormData({...formData, recomendado: e.target.checked})}
                 />
-                Plano Popular (Destaque)
+                Plano Recomendado (Destaque)
               </label>
             </div>
           </div>
@@ -115,44 +196,56 @@ export default function CriarPlanoPage() {
         </div>
 
         <div className="form-section glass">
-          <h3>Vantagens e Recursos</h3>
+          <h3>Acessos e Permissões do Plano</h3>
+          <p className="text-sm text-slate-400 mb-2">Marque os recursos que o aluno terá acesso automático.</p>
           
           <div className="features-builder">
-            <div className="add-feature">
+            <div className="features-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+              {availableItems.map(item => (
+                <div key={item.id} className="feature-item hover:bg-white/10 transition-colors" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ display: 'flex', gap: '8px', cursor: 'pointer', flex: 1 }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedItemIds.includes(item.id)}
+                      onChange={() => toggleItem(item.id)}
+                      style={{ width: 18, height: 18, cursor: 'pointer' }}
+                    />
+                    <span>{item.nome}</span>
+                  </label>
+                  <button type="button" onClick={() => deleteFeature(item.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}>
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="add-feature pt-4 border-t border-white/10">
               <input 
                 type="text" 
                 value={newFeature}
                 onChange={e => setNewFeature(e.target.value)}
-                placeholder="Adicionar nova vantagem..."
+                placeholder="Ou crie um novo recurso no sistema..."
                 onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addFeature())}
               />
               <button type="button" onClick={addFeature}>
                 <Plus size={18} />
               </button>
             </div>
-
-            <div className="features-list">
-              {formData.features.map((feature, index) => (
-                <div key={index} className="feature-item">
-                  <span>{feature}</span>
-                  <button type="button" onClick={() => removeFeature(index)}>
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
 
         <div className="form-actions">
-          <button type="submit" className="btn-save" disabled={loading}>
-            {loading ? 'Criando...' : (
+          <button type="submit" className="btn-save" disabled={loading || selectedItemIds.length === 0}>
+            {loading ? 'Salvando...' : (
               <>
                 <Plus size={18} />
-                Criar Plano
+                Criar Plano Oficial
               </>
             )}
           </button>
+          {!loading && selectedItemIds.length === 0 && (
+             <p style={{textAlign: 'center', marginTop: '10px', color: '#ff4444', fontSize: '13px'}}>Selecione ao menos 1 recurso.</p>
+          )}
         </div>
       </form>
 
@@ -161,13 +254,12 @@ export default function CriarPlanoPage() {
           <div className="success-modal">
             <CheckCircle2 size={48} className="success-icon" />
             <h2>Plano Criado!</h2>
-            <p>O novo plano já está disponível para os alunos.</p>
+            <p>Salvo no banco de dados com segurança RLS.</p>
           </div>
         </div>
       )}
 
       <style>{`
-        /* Reusando estilos do editar (embutidos para garantir consistência) */
         .editar-plano-container {
           max-width: 800px;
           margin: 0 auto;
@@ -275,20 +367,6 @@ export default function CriarPlanoPage() {
           align-items: center;
         }
 
-        .input-group.checkbox label {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          cursor: pointer;
-          user-select: none;
-        }
-
-        .input-group.checkbox input {
-          width: 20px;
-          height: 20px;
-          cursor: pointer;
-        }
-
         .features-builder {
           display: flex;
           flex-direction: column;
@@ -321,32 +399,19 @@ export default function CriarPlanoPage() {
           cursor: pointer;
         }
 
-        .features-list {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 0.75rem;
-        }
-
         .feature-item {
           display: flex;
           align-items: center;
-          justify-content: space-between;
           background: rgba(255, 255, 255, 0.05);
-          padding: 0.625rem 0.875rem;
+          padding: 0.875rem 1rem;
           border-radius: 0.625rem;
           border: 1px solid rgba(255, 255, 255, 0.1);
+          color: white;
         }
 
         .feature-item span {
-          font-size: 0.8125rem;
-        }
-
-        .feature-item button {
-          background: none;
-          border: none;
-          color: #ef4444;
-          cursor: pointer;
-          display: flex;
+          font-size: 0.9375rem;
+          font-weight: 500;
         }
 
         .form-actions {
@@ -371,9 +436,15 @@ export default function CriarPlanoPage() {
           transition: all 0.2s;
         }
 
-        .btn-save:hover {
+        .btn-save:hover:not(:disabled) {
           transform: translateY(-2px);
           box-shadow: 0 8px 24px rgba(139, 92, 246, 0.5);
+        }
+
+        .btn-save:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          background: #333;
         }
 
         .success-overlay {
@@ -408,8 +479,8 @@ export default function CriarPlanoPage() {
         }
 
         @media (max-width: 640px) {
-          .input-row, .features-list {
-            grid-template-columns: 1fr;
+          .input-row, .features-grid {
+            grid-template-columns: 1fr !important;
           }
         }
       `}</style>

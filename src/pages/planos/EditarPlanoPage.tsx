@@ -1,7 +1,13 @@
 import { useState, useEffect } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { ArrowLeft, Save, Plus, X, CheckCircle2 } from 'lucide-react'
+import { supabase } from '../../lib/supabase'
 import '../Planos.css'
+
+interface ItemDB {
+  id: string
+  nome: string
+}
 
 export default function EditarPlanoPage() {
   const { id } = useParams()
@@ -9,76 +15,133 @@ export default function EditarPlanoPage() {
   const [loading, setLoading] = useState(false)
   const [showSuccess, setShowSuccess] = useState(false)
 
-  // Mock data - in a real app, this would be fetched from Supabase
   const [formData, setFormData] = useState({
     name: '',
     price: '',
+    duration: 30,
     description: '',
     popular: false,
-    features: [] as string[]
+    recomendado: false
   })
 
+  const [availableItems, setAvailableItems] = useState<ItemDB[]>([])
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([])
   const [newFeature, setNewFeature] = useState('')
 
   useEffect(() => {
-    // Simulate fetching plan data
-    if (id === 'free') {
-      setFormData({
-        name: 'Free',
-        price: '0',
-        description: 'Experimente gratuitamente',
-        popular: false,
-        features: ['1 treino ativo', '5 exercícios por treino', 'Biblioteca de exercícios']
-      })
-    } else if (id === 'basic') {
-      setFormData({
-        name: 'Básico',
-        price: '14.90',
-        description: 'Para quem leva treino a sério',
-        popular: false,
-        features: ['5 treinos ativos', '15 exercícios por treino', 'Gráficos e analytics']
-      })
-    } else if (id === 'premium') {
-      setFormData({
-        name: 'Premium',
-        price: '29.90',
-        description: 'Tudo que você precisa para evoluir',
-        popular: true,
-        features: ['Treinos ilimitados', 'Exercícios ilimitados', 'Controle financeiro']
-      })
+    if (id) {
+      loadData(id)
     }
   }, [id])
+
+  const loadData = async (planId: string) => {
+    const { data: itens } = await supabase.from('itens').select('*').order('nome')
+    if (itens) setAvailableItems(itens)
+
+    const { data: planData } = await supabase
+      .from('planos')
+      .select(`
+        *,
+        plano_itens (item_id)
+      `)
+      .eq('id', planId)
+      .single()
+
+    if (planData) {
+      setFormData({
+        name: planData.nome,
+        price: planData.preco.toString(),
+        duration: planData.duracao_dias || 30,
+        description: planData.descricao || '',
+        popular: false,
+        recomendado: planData.recomendado || false
+      })
+
+      const linkedIds = planData.plano_itens.map((pi: any) => pi.item_id)
+      setSelectedItemIds(linkedIds)
+    }
+  }
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setLoading(true)
     
-    // Simular salvamento
-    await new Promise(resolve => setTimeout(resolve, 1000))
-    
-    setLoading(false)
-    setShowSuccess(true)
-    setTimeout(() => {
-      setShowSuccess(false)
-      navigate('/planos')
-    }, 1500)
-  }
+    try {
+      if (!id) throw new Error('ID do plano ausente')
 
-  const addFeature = () => {
-    if (newFeature.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        features: [...prev.features, newFeature.trim()]
-      }))
-      setNewFeature('')
+      const { error: planoError } = await supabase
+        .from('planos')
+        .update({
+          nome: formData.name,
+          descricao: formData.description,
+          preco: parseFloat(formData.price) || 0,
+          duracao_dias: formData.duration,
+          recomendado: formData.recomendado
+        })
+        .eq('id', id)
+
+      if (planoError) throw planoError
+
+      await supabase.from('plano_itens').delete().eq('plano_id', id)
+
+      if (selectedItemIds.length > 0) {
+        const refs = selectedItemIds.map(itemId => ({
+          plano_id: id,
+          item_id: itemId
+        }))
+        const { error: itemsError } = await supabase.from('plano_itens').insert(refs)
+        if (itemsError) throw itemsError
+      }
+      
+      setShowSuccess(true)
+      setTimeout(() => {
+        setShowSuccess(false)
+        navigate('/planos')
+      }, 1500)
+    } catch (err: any) {
+      console.error(err)
+      alert('Erro ao atualizar plano: ' + err.message)
+    } finally {
+      setLoading(false)
     }
   }
 
-  const removeFeature = (index: number) => {
-    setFormData(prev => ({
-      ...prev,
-      features: prev.features.filter((_, i) => i !== index)
-    }))
+  const addFeature = async () => {
+    if (!newFeature.trim()) return
+    const nomeItem = newFeature.trim()
+    try {
+      const { data, error } = await supabase
+        .from('itens')
+        .insert({ nome: nomeItem })
+        .select()
+        .single()
+      
+      if (!error && data) {
+        setAvailableItems(prev => [...prev, data].sort((a,b) => a.nome.localeCompare(b.nome)))
+        setSelectedItemIds(prev => [...prev, data.id])
+      }
+    } catch {
+      // already exists
+    }
+    setNewFeature('')
+  }
+  
+  const toggleItem = (itemId: string) => {
+    setSelectedItemIds(prev => 
+      prev.includes(itemId) ? prev.filter(x => x !== itemId) : [...prev, itemId]
+    )
+  }
+
+  const deleteFeature = async (itemId: string) => {
+    if (confirm('Tem certeza que deseja excluir este recurso? Isso vai remover essa marcação de todos os planos.')) {
+      try {
+        await supabase.from('itens').delete().eq('id', itemId)
+        setAvailableItems(prev => prev.filter(item => item.id !== itemId))
+        setSelectedItemIds(prev => prev.filter(idLoc => idLoc !== itemId))
+      } catch (err: any) {
+        alert('Erro ao excluir: ' + err.message)
+      }
+    }
   }
 
   return (
@@ -90,7 +153,7 @@ export default function EditarPlanoPage() {
         </button>
         <div className="header-titles">
           <h1>Editar Plano</h1>
-          <p>Ajuste os detalhes do plano {formData.name}</p>
+          <p>Ajuste os detalhes do pacote de assinatura</p>
         </div>
       </div>
 
@@ -104,31 +167,45 @@ export default function EditarPlanoPage() {
               type="text" 
               value={formData.name}
               onChange={e => setFormData({...formData, name: e.target.value})}
-              placeholder="Ex: Premium Gold"
+              placeholder="Ex: Plano Semestral"
               required
             />
           </div>
 
           <div className="input-row">
             <div className="input-group">
-              <label>Preço Mensal (R$)</label>
+              <label>Preço Base (R$)</label>
               <input 
                 type="number" 
                 step="0.01"
+                min="0"
                 value={formData.price}
                 onChange={e => setFormData({...formData, price: e.target.value})}
                 placeholder="0.00"
                 required
               />
             </div>
+            
+            <div className="input-group">
+              <label>Duração (Dias)</label>
+              <input 
+                type="number" 
+                min="1"
+                value={formData.duration}
+                onChange={e => setFormData({...formData, duration: parseInt(e.target.value) || 0})}
+                required
+                placeholder="Ex: 7 para trial, 30 mensal"
+              />
+            </div>
+
             <div className="input-group checkbox">
-              <label>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', cursor: 'pointer' }}>
                 <input 
                   type="checkbox" 
-                  checked={formData.popular}
-                  onChange={e => setFormData({...formData, popular: e.target.checked})}
+                  checked={formData.recomendado}
+                  onChange={e => setFormData({...formData, recomendado: e.target.checked})}
                 />
-                Plano Popular (Destaque)
+                Plano Recomendado (Destaque)
               </label>
             </div>
           </div>
@@ -138,7 +215,7 @@ export default function EditarPlanoPage() {
             <textarea 
               value={formData.description}
               onChange={e => setFormData({...formData, description: e.target.value})}
-              placeholder="Descreva o objetivo do plano..."
+              placeholder="Ex: Acesso total aos treinos e suporte via chat..."
               rows={2}
               required
             />
@@ -146,37 +223,46 @@ export default function EditarPlanoPage() {
         </div>
 
         <div className="form-section glass">
-          <h3>Vantagens e Recursos</h3>
+          <h3>Acessos e Permissões do Plano</h3>
+          <p className="text-sm text-slate-400 mb-2">Marque os recursos que o aluno terá acesso automático.</p>
           
           <div className="features-builder">
-            <div className="add-feature">
+            <div className="features-grid" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
+              {availableItems.map(item => (
+                <div key={item.id} className="feature-item hover:bg-white/10 transition-colors" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <label style={{ display: 'flex', gap: '8px', cursor: 'pointer', flex: 1 }}>
+                    <input 
+                      type="checkbox" 
+                      checked={selectedItemIds.includes(item.id)}
+                      onChange={() => toggleItem(item.id)}
+                      style={{ width: 18, height: 18, cursor: 'pointer' }}
+                    />
+                    <span>{item.nome}</span>
+                  </label>
+                  <button type="button" onClick={() => deleteFeature(item.id)} style={{ background: 'none', border: 'none', color: '#ef4444', cursor: 'pointer', padding: '4px' }}>
+                    <X size={16} />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="add-feature pt-4 border-t border-white/10">
               <input 
                 type="text" 
                 value={newFeature}
                 onChange={e => setNewFeature(e.target.value)}
-                placeholder="Adicionar nova vantagem..."
+                placeholder="Ou crie um novo recurso no sistema..."
                 onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addFeature())}
               />
               <button type="button" onClick={addFeature}>
                 <Plus size={18} />
               </button>
             </div>
-
-            <div className="features-list">
-              {formData.features.map((feature, index) => (
-                <div key={index} className="feature-item">
-                  <span>{feature}</span>
-                  <button type="button" onClick={() => removeFeature(index)}>
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
-            </div>
           </div>
         </div>
 
         <div className="form-actions">
-          <button type="submit" className="btn-save" disabled={loading}>
+          <button type="submit" className="btn-save" disabled={loading || selectedItemIds.length === 0}>
             {loading ? 'Salvando...' : (
               <>
                 <Save size={18} />
@@ -184,6 +270,9 @@ export default function EditarPlanoPage() {
               </>
             )}
           </button>
+          {!loading && selectedItemIds.length === 0 && (
+             <p style={{textAlign: 'center', marginTop: '10px', color: '#ff4444', fontSize: '13px'}}>Selecione ao menos 1 recurso.</p>
+          )}
         </div>
       </form>
 
@@ -192,7 +281,7 @@ export default function EditarPlanoPage() {
           <div className="success-modal">
             <CheckCircle2 size={48} className="success-icon" />
             <h2>Alterações Salvas!</h2>
-            <p>O plano foi atualizado com sucesso.</p>
+            <p>O plano foi atualizado com sucesso no banco de dados.</p>
           </div>
         </div>
       )}
@@ -216,7 +305,7 @@ export default function EditarPlanoPage() {
           display: flex;
           align-items: center;
           gap: 0.5rem;
-          background: rgba(255, 255, 255, 0.05);
+          background: rgba(139, 92, 246, 0.05);
           border: 1px solid var(--color-border);
           padding: 0.625rem 1rem;
           border-radius: 0.75rem;
@@ -226,7 +315,7 @@ export default function EditarPlanoPage() {
         }
 
         .btn-back:hover {
-          background: rgba(255, 255, 255, 0.1);
+          background: rgba(139, 92, 246, 0.1);
           color: var(--color-text-primary);
         }
 
@@ -305,20 +394,6 @@ export default function EditarPlanoPage() {
           align-items: center;
         }
 
-        .input-group.checkbox label {
-          display: flex;
-          align-items: center;
-          gap: 0.75rem;
-          cursor: pointer;
-          user-select: none;
-        }
-
-        .input-group.checkbox input {
-          width: 20px;
-          height: 20px;
-          cursor: pointer;
-        }
-
         .features-builder {
           display: flex;
           flex-direction: column;
@@ -351,32 +426,19 @@ export default function EditarPlanoPage() {
           cursor: pointer;
         }
 
-        .features-list {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 0.75rem;
-        }
-
         .feature-item {
           display: flex;
           align-items: center;
-          justify-content: space-between;
           background: rgba(255, 255, 255, 0.05);
-          padding: 0.625rem 0.875rem;
+          padding: 0.875rem 1rem;
           border-radius: 0.625rem;
           border: 1px solid rgba(255, 255, 255, 0.1);
+          color: white;
         }
 
         .feature-item span {
-          font-size: 0.8125rem;
-        }
-
-        .feature-item button {
-          background: none;
-          border: none;
-          color: #ef4444;
-          cursor: pointer;
-          display: flex;
+          font-size: 0.9375rem;
+          font-weight: 500;
         }
 
         .form-actions {
@@ -401,9 +463,15 @@ export default function EditarPlanoPage() {
           transition: all 0.2s;
         }
 
-        .btn-save:hover {
+        .btn-save:hover:not(:disabled) {
           transform: translateY(-2px);
           box-shadow: 0 8px 24px rgba(139, 92, 246, 0.5);
+        }
+
+        .btn-save:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
+          background: #333;
         }
 
         .success-overlay {
@@ -438,8 +506,8 @@ export default function EditarPlanoPage() {
         }
 
         @media (max-width: 640px) {
-          .input-row, .features-list {
-            grid-template-columns: 1fr;
+          .input-row, .features-grid {
+            grid-template-columns: 1fr !important;
           }
         }
       `}</style>

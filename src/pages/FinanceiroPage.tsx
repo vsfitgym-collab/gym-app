@@ -22,6 +22,7 @@ import {
 import { XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar } from 'recharts'
 import CardBloqueio from '../components/CardBloqueio'
 import { useSubscription } from '../hooks/useSubscription'
+import ProtectedFeature from '../components/ProtectedFeature'
 import './Financeiro.css'
 
 interface Student {
@@ -411,22 +412,9 @@ ${revenueData.length > 0 ? `<div class="section"><div class="stitle">Evolução 
     )
   }
 
-  if (role !== 'personal' && !isPremium) {
-    return (
-      <div className="financeiro-page">
-        <div className="financeiro-header">
-          <div className="header-info">
-            <h1>Financeiro</h1>
-            <p>Visão geral dos seus ganhos</p>
-          </div>
-        </div>
-        <CardBloqueio feature="controle financeiro completo" />
-      </div>
-    )
-  }
-
   return (
-    <div className="financeiro-page">
+    <ProtectedFeature feature="Gráficos e Analytics">
+      <div className="financeiro-page">
       {/* Header */}
       <div className="financeiro-header">
         <div className="header-info">
@@ -695,5 +683,6 @@ ${revenueData.length > 0 ? `<div class="section"><div class="stitle">Evolução 
         </div>
       )}
     </div>
+    </ProtectedFeature>
   )
 }

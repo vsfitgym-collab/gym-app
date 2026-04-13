@@ -17,7 +17,7 @@ import './PendingPayments.css'
 interface PendingPayment {
   id: string
   user_id: string
-  plan: 'basic' | 'premium'
+  plan: string
   amount: number
   status: 'pending' | 'approved' | 'rejected'
   pix_key: string
@@ -112,7 +112,7 @@ export default function PendingPaymentsPage() {
 
       await supabase.from('subscriptions').upsert({
         user_id: userId,
-        plan,
+        plan, // Salvando o nome exato (ex: "Plano Pro")
         status: 'active',
         start_date: now.toISOString(),
         end_date: endDate.toISOString(),

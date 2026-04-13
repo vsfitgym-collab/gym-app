@@ -5,6 +5,7 @@ import { achievements as templateAchievements, getUnlockedCount, getTotalXP, get
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { getPresenceStats } from '../lib/presenceManager'
+import ProtectedFeature from '../components/ProtectedFeature'
 
 const categories = [
   { value: 'all', label: 'Todas', icon: Trophy },
@@ -166,97 +167,99 @@ function TelaAluno({ user }: { user: any }) {
   }
 
   return (
-    <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto">
-      <div className="flex justify-between items-center flex-wrap gap-4">
-        <div>
-          <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-1">Conquistas</h2>
-          <span className="text-gray-400 text-sm">
-            {stats.unlocked}/{stats.total} desbloqueadas
-          </span>
-        </div>
-        <div className="flex flex-col items-center px-6 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl">
-          <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">{stats.totalXP}</span>
-          <span className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wider">XP Total</span>
-        </div>
-      </div>
-
-      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 md:p-6 flex flex-col gap-6">
-        <div className="flex flex-col gap-2">
-          <div className="flex justify-between text-sm text-gray-400">
-            <span>Progresso Geral</span>
-            <span className="font-semibold text-white">{unlockedPercent}%</span>
+    <ProtectedFeature feature="Gamificação e Conquistas">
+      <div className="flex flex-col gap-6 w-full max-w-5xl mx-auto">
+        <div className="flex justify-between items-center flex-wrap gap-4">
+          <div>
+            <h2 className="text-2xl md:text-3xl font-bold tracking-tight text-white mb-1">Conquistas</h2>
+            <span className="text-gray-400 text-sm">
+              {stats.unlocked}/{stats.total} desbloqueadas
+            </span>
           </div>
-          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-            <div 
-              className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500" 
-              style={{ width: `${unlockedPercent}%` }}
+          <div className="flex flex-col items-center px-6 py-3 bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl">
+            <span className="text-xl md:text-2xl font-bold bg-gradient-to-r from-amber-400 to-orange-500 bg-clip-text text-transparent">{stats.totalXP}</span>
+            <span className="text-[10px] md:text-xs text-gray-400 uppercase tracking-wider">XP Total</span>
+          </div>
+        </div>
+
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 md:p-6 flex flex-col gap-6">
+          <div className="flex flex-col gap-2">
+            <div className="flex justify-between text-sm text-gray-400">
+              <span>Progresso Geral</span>
+              <span className="font-semibold text-white">{unlockedPercent}%</span>
+            </div>
+            <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+              <div 
+                className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-500" 
+                style={{ width: `${unlockedPercent}%` }}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+              <div className="w-10 h-10 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                <Trophy size={20} />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-bold text-white leading-tight text-lg">{stats.unlocked}</span>
+                <span className="text-[10px] md:text-xs text-gray-400">Desbloqueadas</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+              <div className="w-10 h-10 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
+                <Star size={20} />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-bold text-white leading-tight text-lg">{stats.total - stats.unlocked}</span>
+                <span className="text-[10px] md:text-xs text-gray-400">Restantes</span>
+              </div>
+            </div>
+            <div className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
+              <div className="w-10 h-10 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
+                <TrendingUp size={20} />
+              </div>
+              <div className="flex flex-col">
+                <span className="font-bold text-white leading-tight text-lg">{stats.totalXP}</span>
+                <span className="text-[10px] md:text-xs text-gray-400">XP Ganho</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none snap-x">
+          {categories.map(cat => {
+            const Icon = cat.icon
+            const progress = cat.value !== 'all' ? getProgressByCategory(activeAchievements, cat.value) : null
+            const isActive = filter === cat.value
+            return (
+              <button
+                key={cat.value}
+                className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap snap-start ${isActive ? 'bg-purple-600 text-white border-transparent' : 'bg-white/5 text-gray-400 border border-white/10 hover:border-purple-500/50 hover:text-white'}`}
+                onClick={() => setFilter(cat.value)}
+              >
+                <Icon size={16} />
+                <span>{cat.label}</span>
+                {progress && (
+                  <span className="text-xs opacity-70 ml-1">
+                    {progress.unlocked}/{progress.total}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filteredAchievements.map((achievement) => (
+            <ModernAchievementCard 
+              key={achievement.id} 
+              achievement={achievement} 
             />
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
-            <div className="w-10 h-10 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-              <Trophy size={20} />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-white leading-tight text-lg">{stats.unlocked}</span>
-              <span className="text-[10px] md:text-xs text-gray-400">Desbloqueadas</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
-            <div className="w-10 h-10 rounded-lg bg-purple-500/20 text-purple-400 flex items-center justify-center shrink-0">
-              <Star size={20} />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-white leading-tight text-lg">{stats.total - stats.unlocked}</span>
-              <span className="text-[10px] md:text-xs text-gray-400">Restantes</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-4 p-4 bg-white/5 border border-white/10 rounded-xl">
-            <div className="w-10 h-10 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center shrink-0">
-              <TrendingUp size={20} />
-            </div>
-            <div className="flex flex-col">
-              <span className="font-bold text-white leading-tight text-lg">{stats.totalXP}</span>
-              <span className="text-[10px] md:text-xs text-gray-400">XP Ganho</span>
-            </div>
-          </div>
+          ))}
         </div>
       </div>
-
-      <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none snap-x">
-        {categories.map(cat => {
-          const Icon = cat.icon
-          const progress = cat.value !== 'all' ? getProgressByCategory(activeAchievements, cat.value) : null
-          const isActive = filter === cat.value
-          return (
-            <button
-              key={cat.value}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-all whitespace-nowrap snap-start ${isActive ? 'bg-purple-600 text-white border-transparent' : 'bg-white/5 text-gray-400 border border-white/10 hover:border-purple-500/50 hover:text-white'}`}
-              onClick={() => setFilter(cat.value)}
-            >
-              <Icon size={16} />
-              <span>{cat.label}</span>
-              {progress && (
-                <span className="text-xs opacity-70 ml-1">
-                  {progress.unlocked}/{progress.total}
-                </span>
-              )}
-            </button>
-          )
-        })}
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {filteredAchievements.map((achievement) => (
-          <ModernAchievementCard 
-            key={achievement.id} 
-            achievement={achievement} 
-          />
-        ))}
-      </div>
-    </div>
+    </ProtectedFeature>
   )
 }
 

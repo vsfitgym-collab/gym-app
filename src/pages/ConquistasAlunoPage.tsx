@@ -15,6 +15,7 @@ import {
 import { supabase } from '../lib/supabase'
 import { achievements as templateAchievements, type Achievement } from '../data/achievementsData'
 import { getPresenceStats } from '../lib/presenceManager'
+import ProtectedFeature from '../components/ProtectedFeature'
 
 interface AlunoInfo {
   id: string
@@ -146,146 +147,148 @@ export default function ConquistasAlunoPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 flex flex-col gap-6 text-white">
+    <ProtectedFeature feature="Gamificação e Conquistas">
+      <div className="max-w-5xl mx-auto px-4 md:px-6 py-6 flex flex-col gap-6 text-white">
 
-      {/* Botão voltar */}
-      <button
-        onClick={() => navigate('/conquistas')}
-        className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors w-fit"
-      >
-        <ArrowLeft size={16} />
-        Voltar para Gestão de Conquistas
-      </button>
-
-      {/* Header do aluno */}
-      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 md:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-4">
-          <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shrink-0">
-            {aluno?.name?.charAt(0)?.toUpperCase() ?? <User size={24} />}
-          </div>
-          <div className="flex flex-col gap-1">
-            <h2 className="text-xl font-bold text-white">{aluno?.name || 'Aluno'}</h2>
-            <span className="text-sm text-gray-400">
-              Plano: <span className="text-purple-400 font-medium capitalize">{aluno?.plan || 'free'}</span>
-            </span>
-          </div>
-        </div>
-
+        {/* Botão voltar */}
         <button
-          onClick={() => navigate(`/conquistas/criar?aluno=${alunoId}`)}
-          className="flex items-center gap-2 w-37 h-10 px-5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-medium hover:scale-105 transition-all duration-300 shrink-0"
+          onClick={() => navigate('/conquistas')}
+          className="flex items-center gap-2 text-sm text-gray-400 hover:text-white transition-colors w-fit"
         >
-          <span style={{ paddingLeft: '8px', display: 'flex', alignItems: 'center' }}>
-            <Plus size={16} />
-          </span>
-          Criar conquista
+          <ArrowLeft size={16} />
+          Voltar para Gestão de Conquistas
         </button>
-      </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
-          { label: 'Total', value: total, icon: Trophy, color: 'text-gray-400' },
-          { label: 'Desbloqueadas', value: unlocked, icon: Star, color: 'text-purple-400' },
-          { label: 'Em progresso', value: inProgress, icon: TrendingUp, color: 'text-yellow-400' },
-          { label: 'Taxa', value: `${rate}%`, icon: Target, color: 'text-emerald-400' },
-        ].map(stat => (
-          <div key={stat.label} className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4 flex flex-col items-center gap-2 text-center">
-            <stat.icon size={20} className={stat.color} />
-            <span className={`text-2xl font-bold ${stat.color}`}>{stat.value}</span>
-            <span className="text-xs text-gray-400">{stat.label}</span>
+        {/* Header do aluno */}
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5 md:p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-14 h-14 rounded-xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-white font-bold text-xl shrink-0">
+              {aluno?.name?.charAt(0)?.toUpperCase() ?? <User size={24} />}
+            </div>
+            <div className="flex flex-col gap-1">
+              <h2 className="text-xl font-bold text-white">{aluno?.name || 'Aluno'}</h2>
+              <span className="text-sm text-gray-400">
+                Plano: <span className="text-purple-400 font-medium capitalize">{aluno?.plan || 'free'}</span>
+              </span>
+            </div>
           </div>
-        ))}
-      </div>
 
-      {/* Barra de progresso geral */}
-      <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
-        <div className="flex justify-between text-sm mb-2">
-          <span className="text-gray-400">Progresso geral</span>
-          <span className="font-semibold text-white">{rate}%</span>
+          <button
+            onClick={() => navigate(`/conquistas/criar?aluno=${alunoId}`)}
+            className="flex items-center gap-2 w-37 h-10 px-5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-medium hover:scale-105 transition-all duration-300 shrink-0"
+          >
+            <span style={{ paddingLeft: '8px', display: 'flex', alignItems: 'center' }}>
+              <Plus size={16} />
+            </span>
+            Criar conquista
+          </button>
         </div>
-        <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-          <div
-            className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-700"
-            style={{ width: `${rate}%` }}
-          />
-        </div>
-        <div className="flex justify-between mt-2 text-xs text-gray-500">
-          <span>{unlocked} / {total} desbloqueadas</span>
-          <span>{inProgress} em progresso</span>
-        </div>
-      </div>
 
-      {/* Lista de conquistas */}
-      <div>
-        <h3 className="text-base font-semibold text-white mb-4">Conquistas do aluno</h3>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {achievements.map(ach => {
-            const target = ach.target || 1
-            const progress = ach.progress || 0
-            const percent = Math.min((progress / target) * 100, 100)
+        {/* Stats */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          {[
+            { label: 'Total', value: total, icon: Trophy, color: 'text-gray-400' },
+            { label: 'Desbloqueadas', value: unlocked, icon: Star, color: 'text-purple-400' },
+            { label: 'Em progresso', value: inProgress, icon: TrendingUp, color: 'text-yellow-400' },
+            { label: 'Taxa', value: `${rate}%`, icon: Target, color: 'text-emerald-400' },
+          ].map(stat => (
+            <div key={stat.label} className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-xl p-4 flex flex-col items-center gap-2 text-center">
+              <stat.icon size={20} className={stat.color} />
+              <span className={`text-2xl font-bold ${stat.color}`}>{stat.value}</span>
+              <span className="text-xs text-gray-400">{stat.label}</span>
+            </div>
+          ))}
+        </div>
 
-            return (
-              <div
-                key={ach.id}
-                className={`bg-white/5 backdrop-blur-xl border ${getCardClasses(ach)} rounded-2xl p-5 flex flex-col gap-3 transition-all duration-300 hover:scale-[1.02]`}
-              >
-                {/* Topo */}
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-11 h-11 rounded-xl bg-purple-500/20 flex items-center justify-center text-2xl shrink-0">
-                      {ach.icon}
-                    </div>
-                    <div className="flex flex-col gap-0.5">
-                      <h4 className="font-semibold text-white text-sm leading-tight">{ach.title}</h4>
-                      <div className="flex items-center gap-1 mt-0.5">
-                        {getStatusBadge(ach)}
-                        <span className="text-xs text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full">+{ach.xp} XP</span>
+        {/* Barra de progresso geral */}
+        <div className="bg-white/5 backdrop-blur-xl border border-white/10 rounded-2xl p-5">
+          <div className="flex justify-between text-sm mb-2">
+            <span className="text-gray-400">Progresso geral</span>
+            <span className="font-semibold text-white">{rate}%</span>
+          </div>
+          <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 transition-all duration-700"
+              style={{ width: `${rate}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-2 text-xs text-gray-500">
+            <span>{unlocked} / {total} desbloqueadas</span>
+            <span>{inProgress} em progresso</span>
+          </div>
+        </div>
+
+        {/* Lista de conquistas */}
+        <div>
+          <h3 className="text-base font-semibold text-white mb-4">Conquistas do aluno</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {achievements.map(ach => {
+              const target = ach.target || 1
+              const progress = ach.progress || 0
+              const percent = Math.min((progress / target) * 100, 100)
+
+              return (
+                <div
+                  key={ach.id}
+                  className={`bg-white/5 backdrop-blur-xl border ${getCardClasses(ach)} rounded-2xl p-5 flex flex-col gap-3 transition-all duration-300 hover:scale-[1.02]`}
+                >
+                  {/* Topo */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      <div className="w-11 h-11 rounded-xl bg-purple-500/20 flex items-center justify-center text-2xl shrink-0">
+                        {ach.icon}
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <h4 className="font-semibold text-white text-sm leading-tight">{ach.title}</h4>
+                        <div className="flex items-center gap-1 mt-0.5">
+                          {getStatusBadge(ach)}
+                          <span className="text-xs text-purple-400 bg-purple-400/10 px-2 py-0.5 rounded-full">+{ach.xp} XP</span>
+                        </div>
                       </div>
                     </div>
+
+                    {/* Ações */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-gray-400 hover:text-white">
+                        <Pencil size={13} />
+                      </button>
+                      <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 hover:bg-red-500/20 transition-colors text-gray-400 hover:text-red-400">
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Ações */}
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 hover:bg-white/10 transition-colors text-gray-400 hover:text-white">
-                      <Pencil size={13} />
-                    </button>
-                    <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 hover:bg-red-500/20 transition-colors text-gray-400 hover:text-red-400">
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  {/* Descrição */}
+                  <p className="text-sm text-gray-400 leading-relaxed">{ach.description}</p>
+
+                  {/* Barra de progresso */}
+                  {!ach.unlocked && ach.target && (
+                    <div>
+                      <div className="flex justify-between text-xs text-gray-400 mb-1.5">
+                        <span>Progresso</span>
+                        <span>{progress} / {target}</span>
+                      </div>
+                      <div className="h-2 rounded-full bg-white/10 overflow-hidden">
+                        <div
+                          className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-500"
+                          style={{ width: `${percent}%` }}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Data de desbloqueio */}
+                  {ach.unlocked && ach.unlockedAt && (
+                    <p className="text-xs text-purple-400/70">
+                      Desbloqueado em {new Date(ach.unlockedAt).toLocaleDateString('pt-BR')}
+                    </p>
+                  )}
                 </div>
-
-                {/* Descrição */}
-                <p className="text-sm text-gray-400 leading-relaxed">{ach.description}</p>
-
-                {/* Barra de progresso */}
-                {!ach.unlocked && ach.target && (
-                  <div>
-                    <div className="flex justify-between text-xs text-gray-400 mb-1.5">
-                      <span>Progresso</span>
-                      <span>{progress} / {target}</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-white/10 overflow-hidden">
-                      <div
-                        className="h-full bg-gradient-to-r from-purple-500 to-indigo-500 rounded-full transition-all duration-500"
-                        style={{ width: `${percent}%` }}
-                      />
-                    </div>
-                  </div>
-                )}
-
-                {/* Data de desbloqueio */}
-                {ach.unlocked && ach.unlockedAt && (
-                  <p className="text-xs text-purple-400/70">
-                    Desbloqueado em {new Date(ach.unlockedAt).toLocaleDateString('pt-BR')}
-                  </p>
-                )}
-              </div>
-            )
-          })}
+              )
+            })}
+          </div>
         </div>
       </div>
-    </div>
+    </ProtectedFeature>
   )
 }

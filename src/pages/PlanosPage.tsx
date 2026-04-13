@@ -17,87 +17,24 @@ import {
   Plus,
   Pencil,
   Trash2,
+  CheckSquare
 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
-import { type Plan } from '../lib/subscriptionService'
-import { useSubscription } from '../hooks/useSubscription'
 import { supabase } from '../lib/supabase'
+import { usePermissions } from '../context/PermissionsContext'
 import './Planos.css'
 
 const PIX_KEY = 'vsfitgym@gmail.com'
 
-const planAmounts: Record<string, number> = {
-  basic: 14.90,
-  premium: 29.90,
+interface DBPlan {
+  id: string
+  nome: string
+  descricao: string
+  preco: number
+  popular?: boolean // Can be added locally later or extended in DB
+  duracao_dias: number // Adicionado
+  features: string[] // Extracted from plano_itens
 }
-
-const plans = [
-  {
-    id: 'free' as Plan,
-    name: 'Free',
-    price: 'R$ 0',
-    period: '/7 dias',
-    description: 'Experimente gratuitamente',
-    icon: Gift,
-    color: '#10b981',
-    trial: true,
-    features: [
-      { text: '1 treino ativo', included: true },
-      { text: '5 exercícios por treino', included: true },
-      { text: 'Biblioteca de exercícios', included: true },
-      { text: 'Streak básico', included: true },
-      { text: 'Treinos ilimitados', included: false },
-      { text: 'Gráficos e analytics', included: false },
-      { text: 'Controle financeiro', included: false },
-      { text: 'Histórico de presença', included: false },
-      { text: 'Exercícios personalizados', included: false },
-      { text: 'Exportar relatórios', included: false },
-    ],
-  },
-  {
-    id: 'basic' as Plan,
-    name: 'Básico',
-    price: 'R$ 14,90',
-    period: '/mês',
-    description: 'Para quem leva treino a sério',
-    icon: Zap,
-    color: '#06b6d4',
-    features: [
-      { text: '5 treinos ativos', included: true },
-      { text: '15 exercícios por treino', included: true },
-      { text: 'Biblioteca de exercícios', included: true },
-      { text: 'Streak completo', included: true },
-      { text: 'Gráficos e analytics', included: true },
-      { text: 'Histórico de presença', included: true },
-      { text: 'Treinos ilimitados', included: false },
-      { text: 'Controle financeiro', included: false },
-      { text: 'Exercícios personalizados', included: false },
-      { text: 'Exportar relatórios', included: false },
-    ],
-  },
-  {
-    id: 'premium' as Plan,
-    name: 'Premium',
-    price: 'R$ 29,90',
-    period: '/mês',
-    description: 'Tudo que você precisa para evoluir',
-    icon: Crown,
-    color: '#f59e0b',
-    popular: true,
-    features: [
-      { text: 'Treinos ilimitados', included: true },
-      { text: 'Exercícios ilimitados', included: true },
-      { text: 'Biblioteca completa (+1500)', included: true },
-      { text: 'Streak completo + histórico', included: true },
-      { text: 'Gráficos e analytics', included: true },
-      { text: 'Controle financeiro', included: true },
-      { text: 'Histórico de presença', included: true },
-      { text: 'Exercícios personalizados', included: true },
-      { text: 'Exportar relatórios', included: true },
-      { text: 'Suporte prioritário', included: true },
-    ],
-  },
-]
 
 interface ChatMessage {
   id: number
@@ -110,92 +47,165 @@ interface ChatMessage {
   }
 }
 
+interface PendingAssinatura {
+  id: string
+  aluno_id: string
+  plano_id: string
+  created_at: string
+  planos: { nome: string }
+  users: { raw_user_meta_data?: any } // or profiles
+}
+
 export default function PlanosPage() {
   const { user, role, loading } = useAuth()
+  const { refreshPermissions } = usePermissions()
   const navigate = useNavigate()
   const isAdmin = role === 'personal'
-  const { plan: currentPlan, isPremium: isSubscribed, refresh: refreshSubscription } = useSubscription()
-  const [selectedPlan, setSelectedPlan] = useState<Plan | null>(null)
+  
+  const [plans, setPlans] = useState<DBPlan[]>([])
+  const [loadingPlans, setLoadingPlans] = useState(true)
+  const [userAssinatura, setUserAssinatura] = useState<any>(null) // { plano_id, status }
+
+  const [selectedPlan, setSelectedPlan] = useState<DBPlan | null>(null)
   const [showAssistant, setShowAssistant] = useState(false)
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [inputText, setInputText] = useState('')
   const [processing, setProcessing] = useState(false)
   const [chatStep, setChatStep] = useState<'greeting' | 'plan_selected' | 'payment' | 'confirming' | 'done'>('greeting')
-  const [hasPendingPayment, setHasPendingPayment] = useState(false)
-  const [planJustApproved, setPlanJustApproved] = useState(false)
+  
   const messagesEndRef = useRef<HTMLDivElement>(null)
-  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  if (loading) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#8b5cf6' }}>
-        <Loader2 className="spinner" size={32} />
-      </div>
-    )
-  }
+  // Personal admin state
+  const [pendingAssinaturas, setPendingAssinaturas] = useState<PendingAssinatura[]>([])
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages])
 
   useEffect(() => {
-    checkPendingPayment()
-  }, [user])
+    if (!loading) {
+      loadData()
+    }
+  }, [loading, user])
 
-  useEffect(() => {
-    if (hasPendingPayment && user) {
-      pollingRef.current = setInterval(async () => {
-        const { data: payment } = await supabase
-          .from('pending_payments')
-          .select('status')
-          .eq('user_id', user!.id)
-          .eq('status', 'approved')
-          .order('created_at', { ascending: false })
-          .limit(1)
+  const loadData = async () => {
+    setLoadingPlans(true)
+    try {
+      // Load plans and features
+      const { data: planosData } = await supabase
+        .from('planos')
+        .select(`
+          *,
+          plano_itens (
+            itens (nome)
+          )
+        `)
+        .order('preco', { ascending: true })
+
+      let currentPlans = plans
+      if (planosData) {
+        const formatted = planosData.map((p: any) => ({
+          id: p.id,
+          nome: p.nome,
+          descricao: p.descricao || '',
+          preco: p.preco,
+          duracao_dias: p.duracao_dias || 30,
+          popular: p.recomendado,
+          features: (p.plano_itens || []).map((pi: any) => pi.itens?.nome).filter(Boolean)
+        }))
+        setPlans(formatted)
+        currentPlans = formatted
+      }
+
+      if (user && !isAdmin) {
+        // Load active subscription first
+        const { data: subData } = await supabase
+          .from('subscriptions')
+          .select('plan, status')
+          .eq('user_id', user.id)
+          .in('status', ['active', 'trial'])
           .maybeSingle()
 
-        if (payment) {
-          await refreshSubscription()
-          setHasPendingPayment(false)
-          setPlanJustApproved(true)
-          if (pollingRef.current) clearInterval(pollingRef.current)
-          setTimeout(() => setPlanJustApproved(false), 5000)
+        if (subData) {
+          // Flexible mapping for trial/active plans
+          const planObj = currentPlans.find(p => 
+            p.nome === subData.plan || 
+            p.nome.toLowerCase().includes(subData.plan.toLowerCase()) ||
+            (subData.status === 'trial' && p.nome.toLowerCase().includes('trial'))
+          )
+          
+          setUserAssinatura({ 
+            plano_id: planObj?.id || subData.plan, 
+            status: subData.status === 'trial' ? 'ativa' : 'ativa' 
+          })
+        } else {
+          // If no active sub, check for pending payment
+          const { data: pendingData } = await supabase
+            .from('pending_payments')
+            .select('plan, status')
+            .eq('user_id', user.id)
+            .eq('status', 'pending')
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+
+          if (pendingData) {
+            const planObj = currentPlans.find(p => p.nome === pendingData.plan)
+            setUserAssinatura({ 
+              plano_id: planObj?.id || pendingData.plan, 
+              status: 'pendente' 
+            })
+          }
         }
-      }, 5000)
-    }
+      }
 
-    return () => {
-      if (pollingRef.current) clearInterval(pollingRef.current)
-    }
-  }, [hasPendingPayment, user])
+      if (user && isAdmin) {
+        // Load pending assinaturas to approve
+        loadPendingApprovals()
+      }
 
-  const checkPendingPayment = async () => {
-    if (!user) return
+    } catch (err) {
+      console.error('Error loading data', err)
+    } finally {
+      setLoadingPlans(false)
+    }
+  }
+
+  const loadPendingApprovals = async () => {
+    // Sync with pending_payments table
     const { data } = await supabase
       .from('pending_payments')
-      .select('id')
-      .eq('user_id', user.id)
+      .select('id, created_at, user_id, plan, amount')
       .eq('status', 'pending')
-      .maybeSingle()
     
-    setHasPendingPayment(!!data)
+    if (data) {
+      // Map to the Interface format used in the UI
+      const formatted = data.map(p => ({
+        id: p.id,
+        created_at: p.created_at,
+        aluno_id: p.user_id,
+        plano_id: p.plan, // using name as id for display
+        planos: { nome: p.plan },
+        amount: p.amount
+      }))
+      setPendingAssinaturas(formatted as any)
+    }
   }
 
   const addMessage = (role: 'bot' | 'user', text: string, pixData?: ChatMessage['pixData']) => {
     setMessages(prev => [...prev, { id: Date.now(), role, text, pixData }])
   }
 
-  const startAssistant = (planId: Plan) => {
-    setSelectedPlan(planId)
+  const startAssistant = (plan: DBPlan) => {
+    setSelectedPlan(plan)
     setShowAssistant(true)
     setMessages([])
     setChatStep('greeting')
     setProcessing(false)
 
     setTimeout(() => {
-      addMessage('bot', `Olá! 👋 Eu sou o assistente de pagamento da VSFit Gym.
-
-Posso te ajudar a escolher o melhor plano e finalizar sua assinatura. Qual plano te interessou?`)
+      addMessage('bot', `Olá! 👋 Eu sou o assistente da VSFit Gym.
+Você selecionou o plano **${plan.nome}**. Vamos finalizar sua assinatura?`)
     }, 500)
   }
 
@@ -205,161 +215,124 @@ Posso te ajudar a escolher o melhor plano e finalizar sua assinatura. Qual plano
     setProcessing(true)
     setChatStep('confirming')
 
-    const amount = planAmounts[selectedPlan] || 0
-    const planName = selectedPlan === 'basic' ? 'Básico' : 'Premium'
+    const amount = selectedPlan.preco
+    const planName = selectedPlan.nome
 
-    // Save pending payment
+    // Insert pending payment into the official tracking table
     await supabase.from('pending_payments').insert({
       user_id: user.id,
-      plan: selectedPlan,
-      amount,
+      plan: selectedPlan.nome,
+      amount: selectedPlan.preco,
       status: 'pending',
-      pix_key: PIX_KEY,
+      pix_key: PIX_KEY
     })
 
-    setHasPendingPayment(true)
+    // Refresh memory
+    setUserAssinatura({ plano_id: selectedPlan.id, status: 'pendente' })
 
-    addMessage('bot', `Perfeito! 📱 Aqui está a chave PIX para pagamento:
+    addMessage('bot', `Perfeito! 📱 Aqui está a chave PIX:
 
 **Plano:** ${planName}
 **Valor:** R$ ${amount.toFixed(2).replace('.', ',')}
-**Chave PIX (E-mail):** ${PIX_KEY}
-
-Copie a chave abaixo e faça o pagamento pelo seu app bancário:
+**Chave PIX:** ${PIX_KEY}
 
 ⏳ **Após pagar, clique em "Já paguei"**
-Seu pagamento será verificado pelo personal e o plano ativado em até 24h.`, {
+Sua assinatura foi criada e o personal validará o pagamento logo em seguida.`, {
       pixKey: PIX_KEY,
       amount: amount.toFixed(2),
       planName,
     })
-
     setProcessing(false)
   }
 
   const confirmPayment = async () => {
     if (!user || !selectedPlan) return
     setProcessing(true)
-
     await new Promise(resolve => setTimeout(resolve, 1000))
-
     setProcessing(false)
     setChatStep('done')
 
-    addMessage('bot', `✅ **Solicitação enviada!**
+    addMessage('bot', `✅ **Solitação Finalizada!**
 
-Seu pagamento será verificado pelo personal. Você receberá uma notificação quando o plano for ativado.
+Você receberá acesso quando o personal confirmar o recebimento via Painel de Controle.
 
-⏱️ Prazo: até 24 horas úteis
-
-Obrigado pela preferência! 💪`)
+⏱️ Prazo: até 24 horas.`)
   }
 
   const handleUserMessage = async (text: string) => {
     addMessage('user', text)
     setInputText('')
-
     const lowerText = text.toLowerCase()
 
     if (chatStep === 'greeting') {
-      if (lowerText.includes('free') || lowerText.includes('grátis') || lowerText.includes('trial')) {
-        setSelectedPlan('free')
-        setChatStep('plan_selected')
-        setTimeout(() => addMessage('bot', `O plano **Free** é perfeito para começar! 🎉
-
-✅ 7 dias totalmente grátis
-✅ 1 treino ativo
-✅ Acesso à biblioteca de exercícios
-
-Quando o trial acabar, você pode fazer upgrade a qualquer momento. Quer ativar agora?`), 800)
-      } else if (lowerText.includes('básico') || lowerText.includes('basico') || lowerText.includes('14')) {
-        setSelectedPlan('basic')
-        setChatStep('plan_selected')
-        setTimeout(() => addMessage('bot', `O plano **Básico** é ótimo para quem treina regularmente! ⚡
-
-✅ 5 treinos ativos
-✅ 15 exercícios por treino
-✅ Gráficos e analytics
-✅ Histórico de presença
-
-Valor: **R$ 14,90/mês**
-
-Posso prosseguir com a assinatura?`), 800)
-      } else if (lowerText.includes('premium') || lowerText.includes('29')) {
-        setSelectedPlan('premium')
-        setChatStep('plan_selected')
-        setTimeout(() => addMessage('bot', `Excelente escolha! O **Premium** é o mais completo! 👑
-
-✅ Treinos e exercícios ilimitados
-✅ Biblioteca completa (+1500 exercícios)
-✅ Controle financeiro
-✅ Exercícios personalizados
-✅ Exportar relatórios
-✅ Suporte prioritário
-
-Valor: **R$ 29,90/mês**
-
-Posso prosseguir com a assinatura?`), 800)
-      } else {
-        setTimeout(() => addMessage('bot', `Entendi! Posso te ajudar com:
-
-🎁 **Free** - 7 dias grátis
-⚡ **Básico** - R$ 14,90/mês
-👑 **Premium** - R$ 29,90/mês
-
-Digite o nome do plano que te interessou.`), 800)
-      }
-    } else if (chatStep === 'plan_selected') {
-      if (lowerText.includes('sim') || lowerText.includes('quero') || lowerText.includes('ativar') || lowerText.includes('prosiga') || lowerText.includes('ok') || lowerText.includes('pode')) {
+      if (lowerText.includes('sim') || lowerText.includes('ok') || lowerText.includes('quero')) {
         setChatStep('payment')
-        setTimeout(() => addMessage('bot', `Ótimo! 💳 O pagamento será via **PIX** (instantâneo).
-
-**Plano:** ${selectedPlan === 'basic' ? 'Básico - R$ 14,90/mês' : 'Premium - R$ 29,90/mês'}
-
-Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
-      } else if (lowerText.includes('trocar') || lowerText.includes('outro') || lowerText.includes('mudar')) {
-        setChatStep('greeting')
-        setTimeout(() => addMessage('bot', `Sem problema! Qual plano você prefere?
-
-🎁 **Free** - 7 dias grátis
-⚡ **Básico** - R$ 14,90/mês
-👑 **Premium** - R$ 29,90/mês`), 800)
+        setTimeout(() => addMessage('bot', `Ótimo! O pagamento será via **PIX**. Clique em "Gerar PIX".`), 800)
       } else {
-        setTimeout(() => addMessage('bot', `Deseja prosseguir com a assinatura do plano ${selectedPlan === 'free' ? 'Free' : selectedPlan === 'basic' ? 'Básico' : 'Premium'}? Digite **sim** para continuar.`), 800)
+        setTimeout(() => addMessage('bot', `Deseja prosseguir? Digite 'sim'.`), 800)
       }
     } else if (chatStep === 'payment') {
-      if (lowerText.includes('gerar') || lowerText.includes('pix') || lowerText.includes('qr') || lowerText.includes('pagar') || lowerText.includes('sim')) {
+      if (lowerText.includes('gerar') || lowerText.includes('pix')) {
         await generatePixInfo()
-      } else if (lowerText.includes('trocar') || lowerText.includes('outro')) {
-        setChatStep('plan_selected')
-        setTimeout(() => addMessage('bot', `Sem problema! Qual plano você prefere?
-
-🎁 **Free** - 7 dias grátis
-⚡ **Básico** - R$ 14,90/mês
-👑 **Premium** - R$ 29,90/mês`), 800)
       } else {
-        setTimeout(() => addMessage('bot', `Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
+        setTimeout(() => addMessage('bot', `Clique em **"Gerar PIX"**.`), 800)
       }
     } else if (chatStep === 'confirming') {
-      if (lowerText.includes('já paguei') || lowerText.includes('ja paguei') || lowerText.includes('confirmar') || lowerText.includes('paguei')) {
+      if (lowerText.includes('já paguei') || lowerText.includes('paguei')) {
         await confirmPayment()
-      } else if (lowerText.includes('trocar') || lowerText.includes('outro')) {
-        setChatStep('plan_selected')
-        setTimeout(() => addMessage('bot', `Sem problema! Qual plano você prefere?
-
-🎁 **Free** - 7 dias grátis
-⚡ **Básico** - R$ 14,90/mês
-👑 **Premium** - R$ 29,90/mês`), 800)
       } else {
-        setTimeout(() => addMessage('bot', `Após fazer o PIX, clique em **"Já paguei"** para enviar a solicitação de ativação.`), 800)
+        setTimeout(() => addMessage('bot', `Após pagar, clique em **"Já paguei"**.`), 800)
       }
     } else if (chatStep === 'done') {
-      setTimeout(() => setShowAssistant(false), 3000)
+      setTimeout(() => setShowAssistant(false), 2000)
     }
   }
 
-  const copyToClipboard = (text: string) => {
-    navigator.clipboard.writeText(text)
+  const copyToClipboard = (text: string) => navigator.clipboard.writeText(text)
+
+  const handleApprove = async (paymentId: string, planName: string, userId: string) => {
+    // Approve in pending_payments
+    await supabase.from('pending_payments').update({ 
+      status: 'approved',
+      reviewed_at: new Date().toISOString(),
+      reviewed_by: user?.id
+    }).eq('id', paymentId)
+
+    // Activate subscription
+    const now = new Date()
+    const endDate = new Date(now)
+    endDate.setMonth(endDate.getMonth() + 1)
+
+    await supabase.from('subscriptions').upsert({
+      user_id: userId,
+      plan: planName, // Salvando o nome exato (ex: "Plano Básico")
+      status: 'active',
+      start_date: now.toISOString(),
+      end_date: endDate.toISOString(),
+      updated_at: now.toISOString()
+    }, { onConflict: 'user_id' })
+
+    loadPendingApprovals()
+    alert('Assinatura ativada!')
+  }
+
+  const handleReject = async (paymentId: string) => {
+    if(confirm('Recusar o pagamento e cancelar assinatura?')) {
+      await supabase.from('pending_payments').update({ 
+        status: 'rejected',
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: user?.id
+      }).eq('id', paymentId)
+      loadPendingApprovals()
+    }
+  }
+
+  if (loading || loadingPlans) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', color: '#8b5cf6' }}>
+        <Loader2 className="animate-spin" size={32} />
+      </div>
+    )
   }
 
   return (
@@ -367,7 +340,7 @@ Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
       <div className="planos-header">
         <div className="planos-title">
           <h2>{isAdmin ? 'Gerenciar Planos' : 'Escolha seu Plano'}</h2>
-          <p>{isAdmin ? 'Configure os planos disponíveis para seus alunos' : 'Selecione o plano ideal para sua jornada fitness'}</p>
+          <p>{isAdmin ? 'Configure os pacotes ou ative alunos pendentes' : 'Selecione o plano ideal'}</p>
         </div>
         {isAdmin && (
           <button className="btn-create-plan" onClick={() => navigate('/planos/criar')}>
@@ -375,123 +348,162 @@ Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
             Novo Plano
           </button>
         )}
-        {planJustApproved && (
-          <div className="plan-approved-toast">
-            <CheckCircle2 size={16} />
-            <span>Plano ativado com sucesso!</span>
-          </div>
-        )}
       </div>
 
-      <div className="planos-grid">
-        {plans.map((p) => {
-          const isCurrentPlan = p.id === currentPlan && !isSubscribed
-          
-          return (
-            <div
-              key={p.id}
-              className={`plano-card ${p.popular ? 'popular' : ''} ${isCurrentPlan ? 'current' : ''}`}
-            >
-              {p.popular && (
-                <div className="plano-badge-popular">
-                  <Crown size={12} />
-                  <span>Mais popular</span>
-                </div>
-              )}
+      {isAdmin && pendingAssinaturas.length > 0 && (
+         <div className="bg-white/5 border border-amber-500/20 rounded-2xl p-6 mb-8 mt-4">
+           <h3 className="text-lg font-bold text-amber-400 mb-4 flex items-center gap-2">
+             <Clock size={18} /> Aprovações Pendentes (Alunos Aguardando PIX)
+           </h3>
+           <div className="flex flex-col gap-3">
+             {pendingAssinaturas.map(pa => (
+               <div key={pa.id} className="bg-black/30 border border-white/5 p-4 rounded-xl flex items-center justify-between">
+                 <div>
+                   <p className="text-white font-medium">Assinatura solicitada via {pa.planos?.nome || 'Plano'}</p>
+                   <p className="text-xs text-slate-400 mt-1">ID Aluno: {pa.aluno_id}</p>
+                 </div>
+                 <div className="flex gap-2">
+                    <button onClick={() => handleApprove(pa.id, pa.planos.nome, pa.aluno_id)} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold transition-colors">
+                     <CheckSquare size={16} /> Aprovar
+                   </button>
+                   <button onClick={() => handleReject(pa.id)} className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-3 py-2 rounded-lg flex items-center gap-2 text-sm transition-colors border border-red-500/20">
+                     <X size={16} /> Recusar
+                   </button>
+                 </div>
+               </div>
+             ))}
+           </div>
+         </div>
+      )}
 
-              {p.trial && (
-                <div className="plano-badge-trial">
-                  <Gift size={12} />
-                  <span>7 dias grátis</span>
-                </div>
-              )}
-
-              <div className="plano-header">
-                <div className="plano-icon" style={{ background: `${p.color}15`, color: p.color }}>
-                  <p.icon size={28} />
-                </div>
-                <div className="plano-info">
-                  <h3>{p.name}</h3>
-                  <p>{p.description}</p>
-                </div>
-              </div>
-
-              <div className="plano-price">
-                <span className="price-value">{p.price}</span>
-                <span className="price-period">{p.period}</span>
-              </div>
-
-              <div className="plano-features">
-                {p.features.map((feature, i) => (
-                  <div key={i} className={`plano-feature ${feature.included ? '' : 'disabled'}`}>
-                    {feature.included ? (
-                      <Check size={14} className="feature-check" />
-                    ) : (
-                      <X size={14} className="feature-x" />
-                    )}
-                    <span>{feature.text}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="plano-actions">
-                {isAdmin ? (
-                  <>
-                    <button 
-                      className="btn-action-edit"
-                      onClick={() => navigate(`/planos/editar/${p.id}`)}
-                    >
-                      <Pencil size={16} />
-                      Editar
-                    </button>
-                    <button 
-                      className="btn-action-delete"
-                      onClick={() => {
-                        if(confirm('Tem certeza que deseja excluir este plano?')) {
-                          // Lógica de exclusão aqui
-                        }
-                      }}
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    className={`plano-btn ${p.popular ? 'btn-premium' : p.id === 'basic' ? 'btn-basic' : 'btn-free'}`}
-                    disabled={isCurrentPlan || hasPendingPayment}
-                    onClick={() => startAssistant(p.id)}
-                  >
-                    {hasPendingPayment ? (
-                      <>
-                        <Clock size={16} />
-                        Pagamento pendente
-                      </>
-                    ) : isCurrentPlan ? (
-                      <>
-                        <CheckCircle2 size={16} />
-                        Plano atual
-                      </>
-                    ) : (
-                      <>
-                        <Bot size={16} />
-                        Assinar com IA
-                      </>
-                    )}
-                  </button>
-                )}
-              </div>
-            </div>
-          )
-        })}
-      </div>
-
-      <div className="planos-guarantee">
-        <Shield size={20} />
-        <div>
-          <span className="guarantee-title">Garantia de 7 dias</span>
-          <span className="guarantee-text">Cancele a qualquer momento sem custo</span>
+      {plans.length === 0 ? (
+        <div className="flex flex-col items-center justify-center p-12 text-slate-400 border border-white/10 bg-white/5 rounded-2xl">
+           <Crown size={48} className="mb-4 opacity-50" />
+           <p className="text-center">Nenhum plano cadastrado no banco de dados.</p>
+           {isAdmin && <p className="text-sm mt-2">Clique em "Novo Plano" para criar um.</p>}
         </div>
-      </div>
+      ) : (
+        <div className="planos-grid">
+          {plans.map((p) => {
+            const isCurrentActive = userAssinatura?.plano_id === p.id && userAssinatura?.status === 'ativa'
+            const isPendingThis = userAssinatura?.plano_id === p.id && userAssinatura?.status === 'pendente'
+            
+            return (
+              <div
+                key={p.id}
+                className={`plano-card ${p.popular ? 'popular' : ''} ${(isCurrentActive || isPendingThis) ? 'current' : ''}`}
+              >
+                {p.popular && (
+                  <div className="plano-badge-popular">
+                    <Crown size={12} />
+                    <span>Recomendado</span>
+                  </div>
+                )}
+
+                <div className="plano-header">
+                  <div className="plano-icon" style={{ background: `rgba(139, 92, 246, 0.1)`, color: '#8b5cf6' }}>
+                    <Zap size={28} />
+                  </div>
+                  <div className="plano-info">
+                    <h3>{p.nome}</h3>
+                    <p>{p.descricao}</p>
+                  </div>
+                </div>
+
+                <div className="plano-price">
+                  <span className="price-value">R$ {p.preco.toFixed(2).replace('.',',')}</span>
+                  <span className="price-period">/ {p.duracao_dias} dias</span>
+                </div>
+
+                <div className="plano-features pb-4">
+                  <span className="text-xs text-slate-400 block mb-2 font-semibold tracking-wider">Acessos Liberados:</span>
+                  {[
+                    { dbName: 'Treinos Ativos', label: 'Treinos Ativos (sem limite ou até 3)' },
+                    { dbName: 'Biblioteca de Exercícios', label: 'Biblioteca de Exercícios' },
+                    { dbName: 'Exercícios Personalizados', label: 'Exercícios Personalizados' },
+                    { dbName: 'Chat e Suporte', label: 'Chat e Suporte' },
+                    { dbName: 'Gamificação e Conquistas', label: 'Gamificação' },
+                    { dbName: 'Gráficos e Analytics', label: 'Gráficos e Analytics' },
+                    { dbName: 'Suporte Prioritário', label: 'Suporte Prioritário' },
+                  ].sort((a, b) => {
+                    const aIncluded = p.features.includes(a.dbName)
+                    const bIncluded = p.features.includes(b.dbName)
+                    if (aIncluded && !bIncluded) return -1
+                    if (!aIncluded && bIncluded) return 1
+                    return 0
+                  }).map((feat) => {
+                    const included = p.features.includes(feat.dbName)
+                    return (
+                      <div key={feat.dbName} className={`plano-feature ${included ? 'included' : 'excluded opacity-50'}`}>
+                        {included ? (
+                          <Check size={14} className="feature-check text-emerald-500" />
+                        ) : (
+                          <X size={14} className="feature-x text-red-500" />
+                        )}
+                        <span className={included ? 'text-white' : 'text-slate-500 line-through'}>{feat.label}</span>
+                      </div>
+                    )
+                  })}
+                  
+                  {/* Additional features not predefined */}
+                  {p.features.filter(f => !['Treinos Ativos', 'Biblioteca de Exercícios', 'Chat e Suporte', 'Gamificação e Conquistas', 'Gráficos e Analytics'].includes(f)).map((extraFeature, i) => (
+                    <div key={`extra-${i}`} className="plano-feature included">
+                      <Check size={14} className="feature-check text-emerald-500" />
+                      <span className="text-white">{extraFeature}</span>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="plano-actions">
+                  {isAdmin ? (
+                    <>
+                      <button 
+                        className="btn-action-edit"
+                        onClick={() => navigate(`/planos/editar/${p.id}`)}
+                      >
+                        <Pencil size={16} /> Edit
+                      </button>
+                      <button 
+                        className="btn-action-delete"
+                        onClick={async () => {
+                          if (confirm('Tem certeza?')) {
+                             await supabase.from('planos').delete().eq('id', p.id);
+                             loadData()
+                          }
+                        }}
+                      >
+                        <Trash2 size={16} /> Del
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className={`plano-btn ${p.popular ? 'btn-premium' : 'btn-basic'}`}
+                      disabled={isCurrentActive || userAssinatura?.status === 'pendente'}
+                      onClick={() => startAssistant(p)}
+                    >
+                      {isPendingThis ? (
+                        <>
+                          <Clock size={16} /> Ag. Pagamento
+                        </>
+                      ) : userAssinatura?.status === 'pendente' ? (
+                        'Outro Aguardando'
+                      ) : isCurrentActive ? (
+                        <>
+                          <CheckCircle2 size={16} /> Plano Ativo
+                        </>
+                      ) : (
+                        <>
+                          <Zap size={16} /> Assinar
+                        </>
+                      )}
+                    </button>
+                  )}
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       {/* AI Assistant Modal */}
       {showAssistant && (
@@ -503,7 +515,7 @@ Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
                   <Bot size={20} />
                 </div>
                 <div>
-                  <h3>Assistente VSFit</h3>
+                  <h3>Assistente Pagamento</h3>
                   <span className="assistant-status">Online</span>
                 </div>
               </div>
@@ -523,34 +535,24 @@ Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
                   <div className="message-bubble">
                     {msg.text.split('\n').map((line, i) => {
                       if (line.startsWith('**') && line.endsWith('**')) {
-                        return <strong key={i}>{line.slice(2, -2)}</strong>
+                         return <strong key={i}>{line.slice(2, -2)}</strong>
                       }
                       return (
                         <span key={i}>
-                          {line.split(/(\*\*[^*]+\*\*)/).map((part, j) => {
-                            if (part.startsWith('**') && part.endsWith('**')) {
-                              return <strong key={j}>{part.slice(2, -2)}</strong>
-                            }
-                            return <span key={j}>{part}</span>
-                          })}
+                          {line}
                           {i < msg.text.split('\n').length - 1 && <br />}
                         </span>
                       )
                     })}
 
-                    {/* PIX Key */}
                     {msg.pixData && (
                       <div className="payment-qr-code">
                         <div className="pix-key-display">
                           <span className="pix-key-icon">📧</span>
                           <code className="pix-key-code">{msg.pixData.pixKey}</code>
                           <button className="btn-copy" onClick={() => copyToClipboard(msg.pixData!.pixKey)}>
-                            <Copy size={14} />
-                            Copiar chave
+                            <Copy size={14} /> Copiar
                           </button>
-                        </div>
-                        <div className="pix-info">
-                          <span>💡 Abra seu app bancário → PIX → Cole a chave e envie</span>
                         </div>
                       </div>
                     )}
@@ -561,8 +563,8 @@ Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
                 <div className="message bot">
                   <div className="message-avatar"><Bot size={14} /></div>
                   <div className="message-bubble processing">
-                    <Loader2 size={16} className="spinner" />
-                    <span>Gerando PIX...</span>
+                    <Loader2 size={16} className="spinner border-none" />
+                    <span>Processando...</span>
                   </div>
                 </div>
               )}
@@ -572,17 +574,7 @@ Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
             <div className="assistant-input-area">
               <div className="quick-actions">
                 {chatStep === 'greeting' && (
-                  <>
-                    <button onClick={() => handleUserMessage('Quero o Free')}>🎁 Free</button>
-                    <button onClick={() => handleUserMessage('Quero o Básico')}>⚡ Básico</button>
-                    <button onClick={() => handleUserMessage('Quero o Premium')}>👑 Premium</button>
-                  </>
-                )}
-                {chatStep === 'plan_selected' && (
-                  <>
-                    <button onClick={() => handleUserMessage('Sim, quero assinar')}>✅ Sim, assinar</button>
-                    <button onClick={() => handleUserMessage('Quero trocar de plano')}>🔄 Trocar plano</button>
-                  </>
+                  <button onClick={() => handleUserMessage('Sim')}>✅ Sim, continuar</button>
                 )}
                 {chatStep === 'payment' && (
                   <button onClick={() => handleUserMessage('Gerar PIX')} className="btn-generate-pix">
@@ -590,31 +582,19 @@ Clique em **"Gerar PIX"** para ver a chave e o QR Code.`), 800)
                   </button>
                 )}
                 {chatStep === 'confirming' && (
-                  <>
-                    <button onClick={() => handleUserMessage('Já paguei')}>✅ Já paguei</button>
-                    <button onClick={() => handleUserMessage('Trocar plano')}>🔄 Trocar</button>
-                  </>
+                  <button onClick={() => handleUserMessage('Já paguei')}>✅ Já paguei</button>
                 )}
                 {chatStep === 'done' && (
-                  <button onClick={() => setShowAssistant(false)}>🏠 Voltar aos treinos</button>
+                  <button onClick={() => { setShowAssistant(false); loadData(); }}>🏠 Fechar</button>
                 )}
               </div>
               <div className="input-wrapper">
                 <input
                   type="text"
                   value={inputText}
-                  onChange={e => setInputText(e.target.value)}
-                  onKeyDown={e => e.key === 'Enter' && inputText.trim() && handleUserMessage(inputText.trim())}
-                  placeholder="Digite sua mensagem..."
-                  disabled={processing || chatStep === 'done'}
+                  disabled
+                  placeholder="Selecione acima..."
                 />
-                <button
-                  className="send-btn"
-                  onClick={() => inputText.trim() && handleUserMessage(inputText.trim())}
-                  disabled={processing || chatStep === 'done' || !inputText.trim()}
-                >
-                  <Send size={16} />
-                </button>
               </div>
             </div>
           </div>

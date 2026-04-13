@@ -23,6 +23,7 @@ import { supabase } from '../lib/supabase'
 import { registerWorkoutPresence, checkTodayPresence, getPresenceStats } from '../lib/presenceManager'
 import { useState, useEffect } from 'react'
 import CardBloqueio from '../components/CardBloqueio'
+import ProtectedFeature from '../components/ProtectedFeature'
 import './Dashboard.css'
 
 export const weeklyProgress = [
@@ -401,31 +402,33 @@ export default function DashboardPage() {
       {/* Main Content */}
       <div className="dashboard-main-grid">
         {/* Workouts */}
-        <div className="dashboard-card dashboard-card-wide">
-          <div className="card-header">
-            <div className="card-title">
-              <h2>Treinos Ativos</h2>
-              <span>{activeWorkouts.length} treinos disponíveis</span>
+        <ProtectedFeature feature="Treinos Ativos">
+          <div className="dashboard-card dashboard-card-wide">
+            <div className="card-header">
+              <div className="card-title">
+                <h2>Treinos Ativos</h2>
+                <span>{activeWorkouts.length} treinos disponíveis</span>
+              </div>
+              <button className="card-action" onClick={() => navigate('/treinos')}>
+                Ver todos
+                <ArrowUpRight size={16} />
+              </button>
             </div>
-            <button className="card-action" onClick={() => navigate('/treinos')}>
-              Ver todos
-              <ArrowUpRight size={16} />
-            </button>
+            <div className="workouts-grid">
+              {activeWorkouts.map((treino, index) => (
+                <WorkoutCard key={treino.id} treino={treino} index={index} />
+              ))}
+            </div>
           </div>
-          <div className="workouts-grid">
-            {activeWorkouts.map((treino, index) => (
-              <WorkoutCard key={treino.id} treino={treino} index={index} />
-            ))}
-          </div>
-        </div>
+        </ProtectedFeature>
 
         {/* Weekly Progress */}
         <div className="dashboard-card">
           <WorkoutCalendar />
         </div>
 
-        {/* Chart - Premium or Personal */}
-        {(isPremium || role === 'personal') ? (
+        {/* Chart */}
+        <ProtectedFeature feature="Gráficos e Analytics">
           <div className="dashboard-card dashboard-card-full">
             <div className="card-header">
               <div className="card-title">
@@ -435,9 +438,7 @@ export default function DashboardPage() {
             </div>
             <GraficoEvolucao />
           </div>
-        ) : (
-          <CardBloqueio feature="gráficos e analytics avançados" />
-        )}
+        </ProtectedFeature>
 
         {/* Shortcuts (Personal only) */}
         {role === 'personal' && (
