@@ -3,6 +3,8 @@ import { Outlet, useLocation } from 'react-router-dom'
 import SidebarAluno from './SidebarAluno'
 import Header from './Header'
 import MobileNav from './MobileNav'
+import { usePermissions } from '../context/PermissionsContext'
+import TrialExpiredModal from './TrialExpiredModal'
 
 const pageTitles: Record<string, string> = {
   '/': 'Início',
@@ -16,13 +18,18 @@ const pageTitles: Record<string, string> = {
 
 export default function LayoutAluno() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { status, loading } = usePermissions()
   const location = useLocation()
+  
   const title = pageTitles[location.pathname] || 'Página'
+  const isExpired = status === 'expirada'
+  const isPlanPage = location.pathname === '/planos'
 
   return (
-    <div className="layout">
+    <div className={`layout ${isExpired && !isPlanPage ? 'overflow-hidden max-h-screen' : ''}`}>
       <SidebarAluno isOpen={sidebarOpen} onClose={() => setSidebarOpen(false)} />
-      <main className="content">
+      
+      <main className={`content transition-all duration-500 ${isExpired && !isPlanPage ? 'blur-md pointer-events-none select-none opacity-60' : ''}`}>
         <Header 
           title={title} 
           onMenuToggle={() => setSidebarOpen(!sidebarOpen)}
@@ -31,8 +38,10 @@ export default function LayoutAluno() {
         <div className="page-content">
           <Outlet />
         </div>
-        <MobileNav />
+        {!isExpired && <MobileNav />}
       </main>
+
+      {isExpired && !isPlanPage && <TrialExpiredModal />}
     </div>
   )
 }

@@ -123,20 +123,27 @@ export default function PlanosPage() {
           .from('subscriptions')
           .select('plan, status')
           .eq('user_id', user.id)
-          .in('status', ['active', 'trial'])
+          .in('status', ['ativa', 'trial'])
           .maybeSingle()
 
         if (subData) {
-          // Flexible mapping for trial/active plans
-          const planObj = currentPlans.find(p => 
-            p.nome === subData.plan || 
-            p.nome.toLowerCase().includes(subData.plan.toLowerCase()) ||
-            (subData.status === 'trial' && p.nome.toLowerCase().includes('trial'))
-          )
+          // Match plan by name: "basic" -> "Plano Básico", "pro" -> "Plano Pro", etc.
+          const planKey = subData.plan.toLowerCase()
+          const planObj = currentPlans.find(p => {
+            const nomeLower = p.nome.toLowerCase()
+            // Exact match or key match (e.g. "free"=>"Free", "basic"=>"Plano Básico")
+            return nomeLower === planKey ||
+              nomeLower.includes(planKey) ||
+              (planKey === 'free' && nomeLower === 'free') ||
+              (planKey === 'basic' && nomeLower.includes('básico')) ||
+              (planKey === 'pro' && nomeLower.includes('pro') && !nomeLower.includes('premium')) ||
+              (planKey === 'premium' && nomeLower.includes('premium')) ||
+              (subData.status === 'trial' && nomeLower === 'free')
+          })
           
           setUserAssinatura({ 
-            plano_id: planObj?.id || subData.plan, 
-            status: subData.status === 'trial' ? 'ativa' : 'ativa' 
+            plano_id: planObj?.id || null, 
+            status: 'ativa'
           })
         } else {
           // If no active sub, check for pending payment
@@ -306,7 +313,7 @@ Você receberá acesso quando o personal confirmar o recebimento via Painel de C
     await supabase.from('subscriptions').upsert({
       user_id: userId,
       plan: planName, // Salvando o nome exato (ex: "Plano Básico")
-      status: 'active',
+      status: 'ativa',
       start_date: now.toISOString(),
       end_date: endDate.toISOString(),
       updated_at: now.toISOString()

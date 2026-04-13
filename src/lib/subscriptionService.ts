@@ -1,7 +1,7 @@
 import { supabase } from './supabase'
 
 export type Plan = 'free' | 'basic' | 'pro' | 'premium'
-export type SubscriptionStatus = 'active' | 'canceled' | 'expired' | 'trial'
+export type SubscriptionStatus = 'ativa' | 'expirada' | 'trial' | 'pendente' | 'cancelada'
 
 export interface Subscription {
   id: string
