@@ -1,6 +1,7 @@
-import { useState, useCallback, memo } from 'react'
+import { useState, useCallback, memo, useEffect } from 'react'
 import { ChevronDown, ChevronUp, Target, Wrench, Clock } from 'lucide-react'
 import type { Exercise } from '../../lib/exerciseTranslations'
+import { getSupabaseGifUrl } from '../../lib/exerciseUtils'
 import './ExerciseCard.css'
 
 interface ExerciseCardProps {
@@ -12,6 +13,16 @@ const ExerciseCard = memo(function ExerciseCard({ exercise, onClick }: ExerciseC
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
   const [showInstructions, setShowInstructions] = useState(false)
+  const [currentGifUrl, setCurrentGifUrl] = useState(() => getSupabaseGifUrl(exercise.name))
+  const [attemptedFallback, setAttemptedFallback] = useState(false)
+
+  // Reset states when the exercise changes
+  useEffect(() => {
+    setCurrentGifUrl(getSupabaseGifUrl(exercise.name))
+    setAttemptedFallback(false)
+    setImageError(false)
+    setImageLoaded(false)
+  }, [exercise.name])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -24,25 +35,41 @@ const ExerciseCard = memo(function ExerciseCard({ exercise, onClick }: ExerciseC
     setShowInstructions(prev => !prev)
   }, [])
 
+  const handleImageError = useCallback(() => {
+    if (!attemptedFallback) {
+      // Prioridade 2: Tentar GIF da API (fallback)
+      if (exercise.gifUrl && exercise.gifUrl !== currentGifUrl) {
+        setCurrentGifUrl(exercise.gifUrl)
+        setAttemptedFallback(true)
+      } else {
+        // Se não houver URL da API ou for a mesma, pula para erro final
+        setImageError(true)
+      }
+    } else {
+      // Prioridade 3: Falhou ambos, usar placeholder
+      setImageError(true)
+    }
+  }, [attemptedFallback, exercise.gifUrl, currentGifUrl])
+
   return (
     <div className="exercise-card" onClick={handleClick}>
       <div className="exercise-image-wrapper">
-        {(exercise.gifUrl && !imageLoaded && !imageError) && (
+        {(!imageLoaded && !imageError) && (
           <div className="exercise-image-skeleton" />
         )}
-        {(!exercise.gifUrl || imageError) ? (
+        {imageError ? (
           <div className="exercise-image-placeholder">
             <span className="placeholder-icon">💪</span>
-            <span className="placeholder-text">Sem imagem disponíveis</span>
+            <span className="placeholder-text">Sem imagem disponível</span>
           </div>
         ) : (
           <img
-            src={exercise.gifUrl}
+            src={currentGifUrl}
             alt={exercise.name}
             className={`exercise-image ${imageLoaded ? 'loaded' : ''}`}
             loading="lazy"
             onLoad={() => setImageLoaded(true)}
-            onError={() => setImageError(true)}
+            onError={handleImageError}
           />
         )}
         <div className="exercise-image-overlay" />

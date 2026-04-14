@@ -4,6 +4,7 @@ import { Play, SkipForward, RotateCcw, CheckCircle, ChevronLeft, ChevronRight, X
 import { supabase } from '../lib/supabase'
 import { workouts as localWorkouts } from '../data/workoutsData'
 import { useAuth } from '../context/AuthContext'
+import { getSupabaseGifUrl } from '../lib/exerciseUtils'
 import {
   createSession,
   updateSessionProgress,
@@ -44,6 +45,9 @@ function TreinoPageContent() {
   const [sessionId, setSessionId] = useState<string | null>(null)
   const [savedIndicator, setSavedIndicator] = useState(false)
   const [isPersonal, setIsPersonal] = useState(false)
+  const [currentGifUrl, setCurrentGifUrl] = useState('')
+  const [attemptedFallback, setAttemptedFallback] = useState(false)
+  const [gifError, setGifError] = useState(false)
   const timerRef = useRef<number | null>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -211,6 +215,24 @@ function TreinoPageContent() {
   const progressoPercentual = totalSeries > 0
     ? Math.round(((seriesConcluidas + (serieAtual - 1)) / totalSeries) * 100)
     : 0
+
+  // Atualizar GIF ao mudar de exercício
+  useEffect(() => {
+    if (exercicio) {
+      setCurrentGifUrl(getSupabaseGifUrl(exercicio.nome))
+      setAttemptedFallback(false)
+      setGifError(false)
+    }
+  }, [exercicio?.nome])
+
+  const handleGifError = useCallback(() => {
+    if (!attemptedFallback && exercicio?.gif_url) {
+      setCurrentGifUrl(exercicio.gif_url)
+      setAttemptedFallback(true)
+    } else {
+      setGifError(true)
+    }
+  }, [attemptedFallback, exercicio?.gif_url])
 
   const autoSaveProgress = useCallback((exerciseIndex: number, setNumber: number) => {
     if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current)
@@ -753,8 +775,12 @@ function TreinoPageContent() {
             </div>
 
             <div className="visual-exercise-box">
-              {exercicio.gif_url ? (
-                <img src={exercicio.gif_url} alt={exercicio.nome} />
+              {!gifError ? (
+                <img 
+                  src={currentGifUrl} 
+                  alt={exercicio.nome} 
+                  onError={handleGifError}
+                />
               ) : (
                 <div className="icon-placeholder-elite">
                   <Dumbbell size={64} className="opacity-40" />
