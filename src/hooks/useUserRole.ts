@@ -40,6 +40,18 @@ const PERMISSIONS: Record<UserRole, Record<Plan, UserPermissions>> = {
       canManagePayments: true,
       maxWorkouts: Infinity,
       maxExercises: Infinity
+    },
+    pro: {
+      canCreateWorkout: true,
+      canEditWorkout: true,
+      canDeleteWorkout: true,
+      canViewAnalytics: true,
+      canManageExercises: true,
+      canManageStudents: true,
+      canViewFinance: true,
+      canManagePayments: true,
+      maxWorkouts: Infinity,
+      maxExercises: Infinity
     }
   },
   aluno: {
@@ -68,6 +80,18 @@ const PERMISSIONS: Record<UserRole, Record<Plan, UserPermissions>> = {
       maxExercises: 100
     },
     premium: {
+      canCreateWorkout: false,
+      canEditWorkout: false,
+      canDeleteWorkout: false,
+      canViewAnalytics: true,
+      canManageExercises: false,
+      canManageStudents: false,
+      canViewFinance: false,
+      canManagePayments: false,
+      maxWorkouts: Infinity,
+      maxExercises: Infinity
+    },
+    pro: {
       canCreateWorkout: false,
       canEditWorkout: false,
       canDeleteWorkout: false,

@@ -2,7 +2,7 @@ import type { User, Session } from '@supabase/supabase-js'
 
 export type UserRole = 'aluno' | 'personal'
 
-export type Plan = 'free' | 'basic' | 'premium'
+export type Plan = 'free' | 'basic' | 'pro' | 'premium'
 
 export interface UserPermissions {
   canCreateWorkout: boolean
@@ -60,6 +60,19 @@ export interface Message {
   receiver_id: string
   content: string
   created_at: string
+  read_at: string | null
+}
+
+export interface PlanLimits {
+  maxWorkouts: number
+  maxExercisesPerWorkout: number
+  hasAnalytics: boolean
+  hasFinance: boolean
+  hasPresenceHistory: boolean
+  hasCustomExercises: boolean
+  hasExport: boolean
+  maxStudents: number
+  canCreateUnlimitedWorkouts: boolean
 }
 
 export interface SubscriptionPlan {
@@ -71,13 +84,21 @@ export interface SubscriptionPlan {
   features?: string[]
 }
 
+export type SubscriptionStatus = 'active' | 'ativa' | 'cancelled' | 'cancelada' | 'expired' | 'expirada' | 'trial' | 'pending' | 'pendente'
+
 export interface Subscription {
   id: string
   user_id: string
-  plan_id: string
-  status: 'active' | 'cancelled' | 'expired'
-  started_at: string
+  plan: Plan
+  plan_id?: string
+  status: SubscriptionStatus
+  started_at?: string
+  start_date?: string
   expires_at?: string
+  end_date?: string | null
+  trial_ends_at?: string | null
+  created_at?: string
+  updated_at?: string
 }
 
 export interface AuthContextType {

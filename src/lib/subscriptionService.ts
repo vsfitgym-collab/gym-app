@@ -1,37 +1,11 @@
 import { supabase } from './supabase'
-
-export type Plan = 'free' | 'basic' | 'pro' | 'premium'
-export type SubscriptionStatus = 'ativa' | 'expirada' | 'trial' | 'pendente' | 'cancelada'
-
-export interface Subscription {
-  id: string
-  user_id: string
-  plan: Plan
-  status: SubscriptionStatus
-  start_date: string
-  end_date: string | null
-  trial_ends_at: string | null
-  created_at?: string
-  updated_at?: string
-}
+import type { Plan, Subscription, SubscriptionStatus, PlanLimits } from '../types'
 
 export interface SubscriptionWithProfile extends Subscription {
   profile?: {
     name: string
     email: string
   }
-}
-
-export interface PlanLimits {
-  maxWorkouts: number
-  maxExercisesPerWorkout: number
-  hasAnalytics: boolean
-  hasFinance: boolean
-  hasPresenceHistory: boolean
-  hasCustomExercises: boolean
-  hasExport: boolean
-  maxStudents: number
-  canCreateUnlimitedWorkouts: boolean
 }
 
 export const planLimits: Record<Plan, PlanLimits> = {
@@ -103,7 +77,7 @@ export const isPremium = async (userId: string): Promise<boolean> => {
   const sub = await getSubscription(userId)
   if (!sub) return false
   
-  if (sub.status === 'active') {
+  if (sub.status === 'active' || sub.status === 'ativa') {
     const p = sub.plan.toLowerCase()
     if (p.includes('premium') || p.includes('pro') || p.includes('basic')) return true
   }
@@ -124,7 +98,7 @@ export const getPlan = async (userId: string): Promise<Plan> => {
       if (new Date(sub.trial_ends_at) > new Date()) return 'premium'
     }
     
-    if (sub.status === 'active') {
+    if (sub.status === 'active' || sub.status === 'ativa') {
       const p = sub.plan.toLowerCase()
       if (p.includes('premium')) return 'premium'
       if (p.includes('pro')) return 'pro'

@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
-import { planLimits, type Plan, type PlanLimits } from './subscriptionService'
+import { planLimits } from './subscriptionService'
+import type { Plan, PlanLimits } from '../types'
 
 export const PLAN_LIMITS = {
   free: {
@@ -16,6 +17,11 @@ export const PLAN_LIMITS = {
     workouts: Infinity,
     exercises: Infinity,
     students: Infinity,
+  },
+  pro: {
+    workouts: Infinity,
+    exercises: Infinity,
+    students: 20,
   },
 } as const
 

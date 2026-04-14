@@ -4,11 +4,9 @@ import {
   getSubscription,
   getPlan,
   planLimits,
-  type Subscription,
-  type Plan,
-  type PlanLimits,
   getTrialDaysRemaining,
 } from '../lib/subscriptionService'
+import type { Subscription, Plan, PlanLimits } from '../types'
 
 interface UseSubscriptionReturn {
   subscription: Subscription | null

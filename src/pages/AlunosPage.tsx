@@ -65,6 +65,9 @@ export default function AlunosPage() {
         const planNameStr = profile.plan || 'free'
         const planKey = planNameStr.toLowerCase()
         const planDisplayName = plansMap.get(planKey) || (planNameStr === 'free' ? 'Free' : planNameStr)
+        const planStatus = profile.plan_expires_at 
+          ? (new Date(profile.plan_expires_at) > new Date() ? 'active' : 'expired')
+          : 'active'
 
         return {
           id: profile.id,
