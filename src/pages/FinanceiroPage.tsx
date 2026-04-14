@@ -59,17 +59,8 @@ const periodOptions = [
   { value: 'year', label: 'Ano' },
 ]
 
-const PLAN_LABELS: Record<string, string> = {
-  free: 'Free',
-  basic: 'Básico',
-  premium: 'Premium',
-}
+// Removidos planos fixos para usar dados do banco de dados
 
-const PLAN_PRICES: Record<string, number> = {
-  free: 0,
-  basic: 14.9,
-  premium: 29.9,
-}
 
 export default function FinanceiroPage() {
   const { user } = useAuth()
@@ -77,6 +68,7 @@ export default function FinanceiroPage() {
   const { isPremium } = useSubscription()
   const [period, setPeriod] = useState('month')
   const [students, setStudents] = useState<Student[]>([])
+  const [plans, setPlans] = useState<any[]>([]) // Novo estado para planos
   const [revenueData, setRevenueData] = useState<MonthlyRevenue[]>([])
   const [stats, setStats] = useState<PaymentStats>({
     totalRevenue: 0,
@@ -107,6 +99,11 @@ export default function FinanceiroPage() {
   }
 
   const loadStudents = async () => {
+    // Buscar planos oficiais para ter os preços atuais
+    const { data: dbPlans } = await supabase.from('planos').select('nome, preco')
+    const plansMap = new Map((dbPlans || []).map(p => [p.nome.toLowerCase(), p.preco]))
+    const plansNameMap = new Map((dbPlans || []).map(p => [p.nome.toLowerCase(), p.nome]))
+
     // Buscar perfis de alunos
     const { data: profiles, error: profilesError } = await supabase
       .from('profiles')
@@ -149,8 +146,14 @@ export default function FinanceiroPage() {
         ? new Date(payments[0].reviewed_at).toLocaleDateString('pt-BR')
         : 'Nunca'
 
-      const planKey = sub?.plan ?? profile.plan ?? 'free'
-      const planPrice = PLAN_PRICES[planKey] ?? 0
+      const planRaw = sub?.plan || profile.plan || 'free'
+      const planKey = planRaw.toLowerCase()
+      
+      // Tentar encontrar o preço no mapa de planos (ou usar o amount do último pagamento se disponível)
+      const lastPaymentAmount = payments[0]?.amount
+      const planPrice = lastPaymentAmount !== undefined ? Number(lastPaymentAmount) : (plansMap.get(planKey) || 0)
+      const planDisplayName = plansNameMap.get(planKey) || (planKey === 'free' ? 'Free' : planRaw)
+
 
       let status: 'active' | 'late' | 'pending' = 'pending'
       if (sub) {
@@ -172,7 +175,7 @@ export default function FinanceiroPage() {
         id: profile.id,
         name: profile.name || profile.email?.split('@')[0] || 'Aluno',
         email: profile.email || '',
-        plan: PLAN_LABELS[planKey] ?? planKey,
+        plan: planDisplayName,
         planPrice,
         status,
         lastPayment,

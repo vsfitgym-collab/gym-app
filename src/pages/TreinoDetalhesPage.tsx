@@ -68,15 +68,15 @@ export default function TreinoDetalhesPage() {
         .in('id', exerciseIds)
 
       const plans = rawPlans.map(plan => {
-         const matchedExercise = (exercisesData || []).find(e => e.id === plan.exercise_id)
-         return {
-           id: plan.id,
-           sets: plan.sets,
-           reps: plan.reps,
-           rest_seconds: plan.rest_seconds,
-           order_index: plan.order_index,
-           exercises: matchedExercise || null
-         }
+        const matchedExercise = (exercisesData || []).find(e => e.id === plan.exercise_id)
+        return {
+          id: plan.id,
+          sets: plan.sets,
+          reps: plan.reps,
+          rest_seconds: plan.rest_seconds,
+          order_index: plan.order_index,
+          exercises: matchedExercise || null
+        }
       }) as Plan[]
 
       let durationMinutes = 0
@@ -147,10 +147,10 @@ export default function TreinoDetalhesPage() {
           {role !== 'personal' && treino.plans.length > 0 && (
             <button
               onClick={() => navigate(`/treinos/executar/${treino.id}`)}
-              className="flex items-center gap-2 px-6 h-12 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold shadow-lg shadow-emerald-500/25 transition-all hover:scale-105"
+              className="flex items-center justify-center gap-3 px-10 py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-bold shadow-xl shadow-emerald-500/30 transition-all hover:scale-105 active:scale-95 w-full md:w-auto"
             >
-              <Play size={18} fill="currentColor" />
-              Iniciar Treino
+              <Play size={20} fill="currentColor" />
+              <span className="tracking-wide">Iniciar Treino</span>
             </button>
           )}
         </div>
@@ -177,7 +177,7 @@ export default function TreinoDetalhesPage() {
 
       <div className="flex flex-col gap-4 mt-4">
         <h3 className="text-lg font-semibold text-white/90">Lista de Exercícios</h3>
-        
+
         {treino.plans.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 px-6 bg-white/5 border border-white/10 rounded-3xl text-center">
             <Dumbbell size={48} className="text-slate-600 mb-4" />
@@ -190,7 +190,7 @@ export default function TreinoDetalhesPage() {
             const exercise = exerciseArray[0];
 
             return (
-              <div key={plan.id} className="bg-white/5 border border-white/10 rounded-2xl p-5 flex items-center gap-5 hover:bg-white/10 transition-colors group">
+              <div key={plan.id} className="bg-zinc-900/60 backdrop-blur-md border border-white/10 rounded-2xl p-5 flex items-center gap-5 hover:bg-white/5 transition-all group shadow-lg">
                 <div className="w-10 h-10 rounded-full bg-indigo-500/10 text-indigo-400 font-bold flex items-center justify-center border border-indigo-500/20 shadow-inner">
                   {i + 1}
                 </div>
@@ -205,18 +205,18 @@ export default function TreinoDetalhesPage() {
                     </h4>
                   </div>
 
-                  <div className="flex flex-wrap gap-3">
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5">
-                      <span className="text-slate-400 text-xs">Séries</span>
-                      <span className="text-white font-bold text-sm">{plan.sets}</span>
+                  <div className="flex flex-wrap gap-4">
+                    <div className="flex items-center gap-2.5 px-5 ml-4 rounded-xl bg-white/5 border border-white/10 shadow-sm">
+                      <span className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">Séries</span>
+                      <span className="text-white font-black text-base">{plan.sets}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5">
-                      <span className="text-slate-400 text-xs">Reps</span>
-                      <span className="text-white font-bold text-sm">{plan.reps}</span>
+                    <div className="flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 shadow-sm">
+                      <span className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">Reps</span>
+                      <span className="text-white font-black text-base">{plan.reps}</span>
                     </div>
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-black/40 border border-white/5">
-                      <span className="text-slate-400 text-xs">Pausa</span>
-                      <span className="text-amber-400 font-bold text-sm">{plan.rest_seconds}s</span>
+                    <div className="flex items-center gap-2.5 px-5 py-2.5 rounded-xl bg-white/5 border border-white/10 shadow-sm">
+                      <span className="text-slate-400 text-[11px] font-semibold uppercase tracking-wider">Pausa</span>
+                      <span className="text-amber-400 font-black text-base">{plan.rest_seconds}s</span>
                     </div>
                   </div>
                 </div>

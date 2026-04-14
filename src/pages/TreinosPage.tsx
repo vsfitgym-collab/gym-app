@@ -11,6 +11,7 @@ import {
 import { type Workout, getLevelLabel } from '../data/workoutsData'
 import { SkeletonList } from '../components/ui/Skeleton'
 import DataStateHandler, { type DataState } from '../components/DataStateHandler'
+import { useWorkoutCompletion } from '../hooks/useWorkoutCompletion'
 import './Treinos.css'
 
 /* ─── Level Config ─────────────────────────────────── */
@@ -28,6 +29,7 @@ interface WorkoutCardProps {
   progress: number
   isRecommended: boolean
   isLocked: boolean
+  isCompleted: boolean
   onCardClick: (id: string) => void
   onDeleteClick?: (e: React.MouseEvent, id: string) => void
   onAssignClick?: (e: React.MouseEvent, id: string) => void
@@ -35,7 +37,7 @@ interface WorkoutCardProps {
 
 function WorkoutCard({
   treino, index, role, progress,
-  isRecommended, isLocked,
+  isRecommended, isLocked, isCompleted,
   onCardClick, onDeleteClick, onAssignClick
 }: WorkoutCardProps) {
   const navigate = useNavigate()
@@ -43,7 +45,7 @@ function WorkoutCard({
 
   return (
     <div
-      className={`treino-card ${role !== 'personal' ? 'clickable' : ''} ${isRecommended ? 'recommended' : ''}`}
+      className={`treino-card ${role !== 'personal' ? 'clickable' : ''} ${isRecommended ? 'recommended' : ''} ${isCompleted ? 'completed' : ''}`}
       style={{ animationDelay: `${index * 0.07}s` }}
       onClick={() => !isLocked && onCardClick(treino.id)}
     >
@@ -51,18 +53,25 @@ function WorkoutCard({
       {/* ── Top Row ── */}
       <div className="card-top">
         <div className="card-top-left">
-          <div className="card-icon-circle">
-            <Dumbbell size={22} />
+          <div className={`card-icon-circle ${isCompleted ? 'completed-glow' : ''}`}>
+            {isCompleted ? <Check size={22} className="text-emerald-400 drop-shadow-[0_0_8px_rgba(16,185,129,0.7)]" strokeWidth={3} /> : <Dumbbell size={22} />}
           </div>
-          {isRecommended && (
+          {isRecommended && !isCompleted && (
             <div className="recommended-label">
               <Star size={9} fill="currentColor" /> Recomendado para você
             </div>
           )}
+          {isCompleted && (
+            <div className="completed-badge-premium">
+              <Check size={10} strokeWidth={3} /> Concluído
+            </div>
+          )}
         </div>
-        <span className={`level-badge ${lvl.className}`}>
-          {lvl.icon} {lvl.label}
-        </span>
+        {!isCompleted && (
+          <span className={`level-badge ${lvl.className}`}>
+            {lvl.icon} {lvl.label}
+          </span>
+        )}
       </div>
 
       {/* ── Body ── */}
@@ -165,6 +174,7 @@ export default function TreinosPage() {
   const navigate = useNavigate()
   const { user, role } = useAuth()
   const { hasPermission } = usePermissions()
+  const { isWorkoutCompleted, getCompletionStats } = useWorkoutCompletion()
 
   const [treinos, setTreinos] = useState<Workout[]>([])
   const [dataState, setDataState] = useState<DataState>('loading')
@@ -308,9 +318,35 @@ export default function TreinosPage() {
   )
 
   const isTreinosLocked = role !== 'personal' && !hasPermission('Treinos Ativos')
+  const { completedCount, percentage } = getCompletionStats(treinos.length)
 
   return (
     <div className="treinos-page">
+
+      {/* ── Progress Dashboard (Alunos Only) ── */}
+      {role !== 'personal' && dataState === 'success' && treinos.length > 0 && (
+        <div className="completion-dashboard animate-in slide-in-from-top duration-500">
+          <div className="dashboard-content">
+            <div className="dashboard-info">
+              <div className="info-text">
+                <h2 className="dashboard-title">Progresso da Semana</h2>
+                <p className="dashboard-subtitle">Você já concluiu <strong>{completedCount}</strong> de {treinos.length} treinos.</p>
+              </div>
+              <div className="dashboard-percentage">
+                <span className="pct-value">{percentage}%</span>
+              </div>
+            </div>
+            <div className="dashboard-progress-track">
+              <div 
+                className="dashboard-progress-fill" 
+                style={{ width: `${percentage}%` }}
+              >
+                <div className="fill-shimmer" />
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Header ── */}
       <div className="treinos-header">
@@ -360,6 +396,7 @@ export default function TreinosPage() {
                 progress={workoutProgress[String(index)] ?? 70}
                 isRecommended={index === 0 && role !== 'personal'}
                 isLocked={isTreinosLocked}
+                isCompleted={isWorkoutCompleted(treino.id)}
                 onCardClick={handleCardClick}
                 onDeleteClick={handleDeleteClick}
                 onAssignClick={handleAssignClick}

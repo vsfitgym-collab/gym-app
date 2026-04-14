@@ -250,7 +250,7 @@ export default function PendingPaymentsPage() {
                     {payment.plan === 'premium' ? <Crown size={16} /> : <Zap size={16} />}
                   </div>
                   <div>
-                    <span className="plan-name">{payment.plan === 'basic' ? 'Básico' : 'Premium'}</span>
+                    <span className="plan-name">{payment.plan}</span>
                     <span className="plan-amount">R$ {payment.amount.toFixed(2).replace('.', ',')}</span>
                   </div>
                 </div>
@@ -327,7 +327,7 @@ export default function PendingPaymentsPage() {
                 <h4>Pagamento</h4>
                 <div className="detail-row">
                   <span>Plano:</span>
-                  <strong>{selectedPayment.plan === 'basic' ? 'Básico' : 'Premium'}</strong>
+                  <strong>{selectedPayment.plan}</strong>
                 </div>
                 <div className="detail-row">
                   <span>Valor:</span>

@@ -35,6 +35,9 @@ export default function AlunosPage() {
       setError(null)
       console.log('Carregando alunos...')
       
+      const { data: dbPlans } = await supabase.from('planos').select('nome')
+      const plansMap = new Map((dbPlans || []).map(p => [p.nome.toLowerCase(), p.nome]))
+
       const { data: profilesData, error: profilesError } = await supabase
         .from('profiles')
         .select('id, name, role, plan, plan_expires_at, created_at')
@@ -59,15 +62,15 @@ export default function AlunosPage() {
       }
 
       const formattedAlunos: Aluno[] = profilesData.map(profile => {
-        const planName = profile.plan || 'free'
-        const isExpired = profile.plan_expires_at && new Date(profile.plan_expires_at) < new Date()
-        const planStatus = isExpired ? 'inactive' : 'active'
+        const planNameStr = profile.plan || 'free'
+        const planKey = planNameStr.toLowerCase()
+        const planDisplayName = plansMap.get(planKey) || (planNameStr === 'free' ? 'Free' : planNameStr)
 
         return {
           id: profile.id,
           nome: profile.name || 'Aluno',
           email: '',
-          plano: planName === 'free' ? 'Free' : planName === 'basic' ? 'Básico' : 'Premium',
+          plano: planDisplayName,
           planStatus: planStatus,
           created_at: profile.created_at || null,
           status: planStatus === 'active' ? 'ativo' : 'inativo',
