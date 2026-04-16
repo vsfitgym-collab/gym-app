@@ -1,5 +1,5 @@
 import { useState, useCallback, memo, useEffect } from 'react'
-import { ChevronDown, ChevronUp, Target, Wrench, Clock } from 'lucide-react'
+import { Target, Wrench, Edit3, Plus, Trash2 } from 'lucide-react'
 import type { Exercise } from '../../lib/exerciseTranslations'
 import { getSupabaseGifUrl } from '../../lib/exerciseUtils'
 import './ExerciseCard.css'
@@ -7,52 +7,60 @@ import './ExerciseCard.css'
 interface ExerciseCardProps {
   exercise: Exercise
   onClick?: (exercise: Exercise) => void
+  onEdit?: (exercise: Exercise) => void
 }
 
-const ExerciseCard = memo(function ExerciseCard({ exercise, onClick }: ExerciseCardProps) {
+export const ExerciseCard = memo(function ExerciseCard({ exercise, onClick, onEdit }: ExerciseCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
-  const [showInstructions, setShowInstructions] = useState(false)
-  const [currentGifUrl, setCurrentGifUrl] = useState(() => getSupabaseGifUrl(exercise.name))
-  const [attemptedFallback, setAttemptedFallback] = useState(false)
+  const [currentGifUrl, setCurrentGifUrl] = useState(() => exercise.gifUrl || getSupabaseGifUrl(exercise.name))
+  const [fallbackLevel, setFallbackLevel] = useState(0)
 
   // Reset states when the exercise changes
   useEffect(() => {
-    setCurrentGifUrl(getSupabaseGifUrl(exercise.name))
-    setAttemptedFallback(false)
+    setCurrentGifUrl(exercise.gifUrl || getSupabaseGifUrl(exercise.name))
+    setFallbackLevel(0)
     setImageError(false)
     setImageLoaded(false)
-  }, [exercise.name])
+  }, [exercise.name, exercise.gifUrl])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
-    e.stopPropagation()
     onClick?.(exercise)
   }, [exercise, onClick])
 
-  const handleToggleInstructions = useCallback((e: React.MouseEvent) => {
+  const handleEdit = useCallback((e: React.MouseEvent) => {
     e.stopPropagation()
-    setShowInstructions(prev => !prev)
-  }, [])
+    onEdit?.(exercise)
+  }, [exercise, onEdit])
 
   const handleImageError = useCallback(() => {
-    if (!attemptedFallback) {
-      // Prioridade 2: Tentar GIF da API (fallback)
-      if (exercise.gifUrl && exercise.gifUrl !== currentGifUrl) {
-        setCurrentGifUrl(exercise.gifUrl)
-        setAttemptedFallback(true)
+    if (fallbackLevel === 0) {
+      if (currentGifUrl === exercise.gifUrl) {
+          // If native API url failed, try Proxied
+          setFallbackLevel(1)
+          setCurrentGifUrl(`https://corsproxy.io/?${encodeURIComponent(exercise.gifUrl || '')}`)
       } else {
-        // Se não houver URL da API ou for a mesma, pula para erro final
-        setImageError(true)
+          // If Supabase failed (which happens if API url was blank), and fallback is done
+          setImageError(true)
       }
-    } else {
-      // Prioridade 3: Falhou ambos, usar placeholder
+    } else if (fallbackLevel === 1) {
+      // If corsproxy failed, try Supabase as ultimate salvation
+      setFallbackLevel(2)
+      setCurrentGifUrl(getSupabaseGifUrl(exercise.name))
+    } else if (fallbackLevel === 2) {
       setImageError(true)
     }
-  }, [attemptedFallback, exercise.gifUrl, currentGifUrl])
+  }, [fallbackLevel, exercise.gifUrl, currentGifUrl, exercise.name])
 
   return (
     <div className="exercise-card" onClick={handleClick}>
+      <div className="exercise-card-badges">
+        {exercise.bodyPart && (
+          <span className="exercise-badge-main">{exercise.bodyPart}</span>
+        )}
+      </div>
+
       <div className="exercise-image-wrapper">
         {(!imageLoaded && !imageError) && (
           <div className="exercise-image-skeleton" />
@@ -60,7 +68,7 @@ const ExerciseCard = memo(function ExerciseCard({ exercise, onClick }: ExerciseC
         {imageError ? (
           <div className="exercise-image-placeholder">
             <span className="placeholder-icon">💪</span>
-            <span className="placeholder-text">Sem imagem disponível</span>
+            <span className="placeholder-text">Sem imagem</span>
           </div>
         ) : (
           <img
@@ -70,17 +78,26 @@ const ExerciseCard = memo(function ExerciseCard({ exercise, onClick }: ExerciseC
             loading="lazy"
             onLoad={() => setImageLoaded(true)}
             onError={handleImageError}
+            referrerPolicy="no-referrer"
           />
         )}
         <div className="exercise-image-overlay" />
       </div>
 
-      <div className="exercise-body">
-        <div className="exercise-title-section">
-          <h3 className="exercise-name">{exercise.name}</h3>
-          <span className="exercise-body-part">{exercise.bodyPart}</span>
+      {onEdit && (
+        <div className="exercise-hover-actions">
+          <button className="exercise-action-btn" title="Adicionar ao treino" onClick={handleClick}>
+            <Plus size={18} />
+          </button>
+          <button className="exercise-action-btn" title="Editar exercício" onClick={handleEdit}>
+            <Edit3 size={18} />
+          </button>
         </div>
+      )}
 
+      <div className="exercise-body">
+        <h3 className="exercise-name">{exercise.name}</h3>
+        
         <div className="exercise-tags">
           <span className="exercise-tag target">
             <Target size={12} />
@@ -91,30 +108,6 @@ const ExerciseCard = memo(function ExerciseCard({ exercise, onClick }: ExerciseC
             {exercise.equipment}
           </span>
         </div>
-
-        {exercise.instructions && exercise.instructions.length > 0 && (
-          <div className="exercise-instructions">
-            <button 
-              className="instructions-toggle"
-              onClick={handleToggleInstructions}
-            >
-              <Clock size={14} />
-              <span>Como executar</span>
-              {showInstructions ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-            </button>
-            
-            {showInstructions && (
-              <ol className="instructions-list">
-                {exercise.instructions.slice(0, 4).map((instruction, index) => (
-                  <li key={index}>
-                    <span className="instruction-step">{index + 1}</span>
-                    <span className="instruction-text">{instruction}</span>
-                  </li>
-                ))}
-              </ol>
-            )}
-          </div>
-        )}
       </div>
     </div>
   )
@@ -125,18 +118,20 @@ interface ExerciseListProps {
   loading?: boolean
   error?: string | null
   onExerciseClick?: (exercise: Exercise) => void
+  onEditClick?: (exercise: Exercise) => void
 }
 
 export const ExerciseList = memo(function ExerciseList({ 
   exercises, 
   loading, 
   error, 
-  onExerciseClick 
+  onExerciseClick,
+  onEditClick
 }: ExerciseListProps) {
   if (loading) {
     return (
       <div className="exercise-list">
-        {Array.from({ length: 6 }).map((_, index) => (
+        {Array.from({ length: 8 }).map((_, index) => (
           <ExerciseCardSkeleton key={index} />
         ))}
       </div>
@@ -145,20 +140,20 @@ export const ExerciseList = memo(function ExerciseList({
 
   if (error) {
     return (
-      <div className="exercise-empty">
-        <span className="empty-icon">⚠️</span>
-        <p>Erro ao carregar exercícios</p>
-        <span>{error}</span>
+      <div className="exercise-empty text-center py-10">
+        <span className="empty-icon text-4xl block mb-2">⚠️</span>
+        <p className="text-white font-bold">Erro ao carregar exercícios</p>
+        <span className="text-gray-400">{error}</span>
       </div>
     )
   }
 
   if (exercises.length === 0) {
     return (
-      <div className="exercise-empty">
-        <span className="empty-icon">🔍</span>
-        <p>Nenhum exercício encontrado</p>
-        <span>Tente buscar por outro termo ou filtro</span>
+      <div className="exercise-empty text-center py-12">
+        <span className="empty-icon text-5xl block mb-4">🔍</span>
+        <p className="text-white font-bold text-xl mb-2">Nenhum exercício encontrado</p>
+        <span className="text-gray-400">Tente buscar por outro termo ou filtro</span>
       </div>
     )
   }
@@ -174,6 +169,7 @@ export const ExerciseList = memo(function ExerciseList({
           <ExerciseCard 
             exercise={exercise} 
             onClick={onExerciseClick}
+            onEdit={onEditClick}
           />
         </div>
       ))}
@@ -186,13 +182,14 @@ function ExerciseCardSkeleton() {
     <div className="exercise-card exercise-card-skeleton">
       <div className="exercise-image-wrapper">
         <div className="exercise-image-skeleton" />
+        <div className="exercise-image-overlay" />
       </div>
       <div className="exercise-body">
         <div className="skeleton-line skeleton-title" />
         <div className="skeleton-line skeleton-subtitle" />
         <div className="skeleton-tags">
           <div className="skeleton-tag" />
-          <div className="skeleton-tag" />
+          <div className="skeleton-tag" style={{ width: '80px' }} />
         </div>
       </div>
     </div>

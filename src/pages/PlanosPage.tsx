@@ -34,6 +34,7 @@ interface DBPlan {
   popular?: boolean // Can be added locally later or extended in DB
   duracao_dias: number // Adicionado
   features: string[] // Extracted from plano_itens
+  assinantes?: number // Adicionado para rastrear número de alunos
 }
 
 interface ChatMessage {
@@ -104,15 +105,41 @@ export default function PlanosPage() {
 
       let currentPlans = plans
       if (planosData) {
-        const formatted = planosData.map((p: any) => ({
+        let formatted = planosData.map((p: any) => ({
           id: p.id,
           nome: p.nome,
           descricao: p.descricao || '',
           preco: p.preco,
           duracao_dias: p.duracao_dias || 30,
           popular: p.recomendado,
-          features: (p.plano_itens || []).map((pi: any) => pi.itens?.nome).filter(Boolean)
+          features: (p.plano_itens || []).map((pi: any) => pi.itens?.nome).filter(Boolean),
+          assinantes: 0
         }))
+        
+        if (isAdmin) {
+          // Fetch real counts map for the Admin view
+          const { data: allActiveSubs } = await supabase
+            .from('subscriptions')
+            .select('plan, status')
+            .in('status', ['ativa', 'trial'])
+            
+          if (allActiveSubs) {
+            formatted = formatted.map((p: any) => {
+               const planKey = p.nome.toLowerCase()
+               const count = allActiveSubs.filter((sub: any) => {
+                 const subPlan = sub.plan.toLowerCase()
+                 return subPlan === planKey ||
+                   subPlan.includes(planKey) ||
+                   (subPlan === 'free' && planKey === 'free') ||
+                   (subPlan === 'basic' && planKey.includes('básico')) ||
+                   (subPlan === 'pro' && planKey.includes('pro') && !planKey.includes('premium')) ||
+                   (subPlan === 'premium' && planKey.includes('premium'))
+               }).length
+               return { ...p, assinantes: count }
+            })
+          }
+        }
+        
         setPlans(formatted)
         currentPlans = formatted
       }
@@ -344,53 +371,64 @@ Você receberá acesso quando o personal confirmar o recebimento via Painel de C
 
   return (
     <div className="planos-page">
-      <div className="planos-header">
-        <div className="planos-title">
-          <h2>{isAdmin ? 'Gerenciar Planos' : 'Escolha seu Plano'}</h2>
-          <p>{isAdmin ? 'Configure os pacotes ou ative alunos pendentes' : 'Selecione o plano ideal'}</p>
+      
+      {/* ── Hero Header ── */}
+      <div className="pl-hero">
+        <div className="pl-hero-left">
+          <div className="pl-hero-icon">
+            <Crown size={30} />
+          </div>
+          <div className="pl-hero-text">
+            <h1>{isAdmin ? 'Planos e ' : 'Escolha seu '}<span>{isAdmin ? 'Assinaturas' : 'Plano'}</span></h1>
+            <p>{isAdmin ? 'Gerencie e otimize seus pacotes para aumentar seus resultados e faturamento' : 'Selecione o plano ideal para atingir seus objetivos mais rápido'}</p>
+          </div>
         </div>
         {isAdmin && (
-          <button className="btn-create-plan" onClick={() => navigate('/planos/criar')}>
-            <Plus size={18} />
-            Novo Plano
-          </button>
+          <div className="pl-hero-actions">
+            <button className="pl-btn pl-btn-primary" onClick={() => navigate('/planos/criar')}>
+              <Plus size={16} />
+              Criar Novo Plano
+            </button>
+          </div>
         )}
       </div>
 
+      {/* ── Pendências (Apenas Admin) ── */}
       {isAdmin && pendingAssinaturas.length > 0 && (
-         <div className="bg-white/5 border border-amber-500/20 rounded-2xl p-6 mb-8 mt-4">
-           <h3 className="text-lg font-bold text-amber-400 mb-4 flex items-center gap-2">
-             <Clock size={18} /> Aprovações Pendentes (Alunos Aguardando PIX)
-           </h3>
-           <div className="flex flex-col gap-3">
-             {pendingAssinaturas.map(pa => (
-               <div key={pa.id} className="bg-black/30 border border-white/5 p-4 rounded-xl flex items-center justify-between">
+        <div className="pl-approvals-box">
+          <h3 className="text-lg font-bold text-amber-400 mb-4 flex items-center gap-2">
+            <Clock size={18} /> Aprovações Pendentes
+          </h3>
+          <div className="flex flex-col gap-3">
+            {pendingAssinaturas.map(pa => (
+              <div key={pa.id} className="pl-approval-item">
                  <div>
-                   <p className="text-white font-medium">Assinatura solicitada via {pa.planos?.nome || 'Plano'}</p>
+                   <p className="text-white font-medium">Assinatura solicitada: <span className="text-amber-400">{pa.planos?.nome || 'Plano'}</span></p>
                    <p className="text-xs text-slate-400 mt-1">ID Aluno: {pa.aluno_id}</p>
                  </div>
-                 <div className="flex gap-2">
-                    <button onClick={() => handleApprove(pa.id, pa.planos.nome, pa.aluno_id)} className="bg-emerald-500 hover:bg-emerald-600 text-white px-4 py-2 rounded-lg flex items-center gap-2 text-sm font-bold transition-colors">
+                 <div className="flex gap-2 w-full md:w-auto">
+                    <button onClick={() => handleApprove(pa.id, pa.planos.nome, pa.aluno_id)} className="pl-btn pl-btn-primary" style={{flex: 1, padding: '0.5rem 1rem'}}>
                      <CheckSquare size={16} /> Aprovar
                    </button>
-                   <button onClick={() => handleReject(pa.id)} className="bg-red-500/10 hover:bg-red-500/20 text-red-500 px-3 py-2 rounded-lg flex items-center gap-2 text-sm transition-colors border border-red-500/20">
+                   <button onClick={() => handleReject(pa.id)} className="pl-btn pl-btn-ghost text-red-400 hover:text-red-300 hover:border-red-500/30" style={{flex: 1, padding: '0.5rem 1rem'}}>
                      <X size={16} /> Recusar
                    </button>
                  </div>
-               </div>
-             ))}
-           </div>
-         </div>
+              </div>
+            ))}
+          </div>
+        </div>
       )}
 
+      {/* ── Grid de Planos ── */}
       {plans.length === 0 ? (
         <div className="flex flex-col items-center justify-center p-12 text-slate-400 border border-white/10 bg-white/5 rounded-2xl">
            <Crown size={48} className="mb-4 opacity-50" />
-           <p className="text-center">Nenhum plano cadastrado no banco de dados.</p>
-           {isAdmin && <p className="text-sm mt-2">Clique em "Novo Plano" para criar um.</p>}
+           <p className="text-center">Nenhum plano cadastrado.</p>
+           {isAdmin && <p className="text-sm mt-2">Clique em "Criar Novo Plano" para começar.</p>}
         </div>
       ) : (
-        <div className="planos-grid">
+        <div className="pl-grid">
           {plans.map((p) => {
             const isCurrentActive = userAssinatura?.plano_id === p.id && userAssinatura?.status === 'ativa'
             const isPendingThis = userAssinatura?.plano_id === p.id && userAssinatura?.status === 'pendente'
@@ -398,109 +436,116 @@ Você receberá acesso quando o personal confirmar o recebimento via Painel de C
             return (
               <div
                 key={p.id}
-                className={`plano-card ${p.popular ? 'popular' : ''} ${(isCurrentActive || isPendingThis) ? 'current' : ''}`}
+                className={`pl-card ${p.popular ? 'pl-card-popular' : ''} ${(isCurrentActive || isPendingThis) ? 'current' : ''}`}
               >
                 {p.popular && (
-                  <div className="plano-badge-popular">
-                    <Crown size={12} />
-                    <span>Recomendado</span>
+                  <div className="pl-badge-popular">
+                    <Crown size={12} /> MAIS POPULAR
                   </div>
                 )}
 
-                <div className="plano-header">
-                  <div className="plano-icon" style={{ background: `rgba(139, 92, 246, 0.1)`, color: '#8b5cf6' }}>
-                    <Zap size={28} />
+                <div className="pl-card-header">
+                  <div className="pl-card-icon">
+                    <Zap size={24} />
                   </div>
-                  <div className="plano-info">
-                    <h3>{p.nome}</h3>
-                    <p>{p.descricao}</p>
-                  </div>
+                  <h3 className="pl-card-title">{p.nome}</h3>
+                  <p className="pl-card-desc">{p.descricao || 'Desbloqueie todo o seu potencial com este pacote.'}</p>
                 </div>
 
-                <div className="plano-price">
-                  <span className="price-value">R$ {p.preco.toFixed(2).replace('.',',')}</span>
-                  <span className="price-period">/ {p.duracao_dias} dias</span>
+                <div className="pl-price-wrap">
+                  <span className="pl-price-currency">R$</span>
+                  <span className="pl-price-value">{p.preco.toFixed(2).replace('.',',')}</span>
+                  <span className="pl-price-period">/ {p.duracao_dias} dias</span>
                 </div>
 
-                <div className="plano-features pb-4">
-                  <span className="text-xs text-slate-400 block mb-2 font-semibold tracking-wider">Acessos Liberados:</span>
+                <div className="pl-features">
                   {[
-                    { dbName: 'Treinos Ativos', label: 'Treinos Ativos (sem limite ou até 3)' },
-                    { dbName: 'Biblioteca de Exercícios', label: 'Biblioteca de Exercícios' },
-                    { dbName: 'Exercícios Personalizados', label: 'Exercícios Personalizados' },
-                    { dbName: 'Chat e Suporte', label: 'Chat e Suporte' },
-                    { dbName: 'Gamificação e Conquistas', label: 'Gamificação' },
-                    { dbName: 'Gráficos e Analytics', label: 'Gráficos e Analytics' },
-                    { dbName: 'Suporte Prioritário', label: 'Suporte Prioritário' },
-                  ].sort((a, b) => {
-                    const aIncluded = p.features.includes(a.dbName)
-                    const bIncluded = p.features.includes(b.dbName)
-                    if (aIncluded && !bIncluded) return -1
-                    if (!aIncluded && bIncluded) return 1
-                    return 0
-                  }).map((feat) => {
-                    const included = p.features.includes(feat.dbName)
+                    { dbName: 'Treinos Ativos', label: 'Treinos ativos ilimitados' },
+                    { dbName: 'Biblioteca de Exercícios', label: 'Biblioteca de exercícios premium' },
+                    { dbName: 'Exercícios Personalizados', label: 'Criação de exercícios customizados' },
+                    { dbName: 'Gamificação e Conquistas', label: 'Gamificação e Conquistas' },
+                    { dbName: 'Gráficos e Analytics', label: 'Gráficos e Analytics avançados' },
+                    { dbName: 'Chat e Suporte', label: 'Chat VIP com o Personal' },
+                  ].map((feat) => {
+                    // Match the feature if it's included logically
+                    const included = p.features.some(f => f.toLowerCase().includes(feat.dbName.toLowerCase()) || (feat.dbName === 'Gamificação e Conquistas' && f.toLowerCase().includes('gamif')))
                     return (
-                      <div key={feat.dbName} className={`plano-feature ${included ? 'included' : 'excluded opacity-50'}`}>
+                      <div key={feat.dbName} className={`pl-feature ${included ? 'included' : 'excluded'}`}>
                         {included ? (
-                          <Check size={14} className="feature-check text-emerald-500" />
+                          <Check size={16} className="pl-feat-icon inc" />
                         ) : (
-                          <X size={14} className="feature-x text-red-500" />
+                          <X size={16} className="pl-feat-icon exc" />
                         )}
-                        <span className={included ? 'text-white' : 'text-slate-500 line-through'}>{feat.label}</span>
+                        <span>{feat.label}</span>
                       </div>
                     )
                   })}
                   
-                  {/* Additional features not predefined */}
-                  {p.features.filter(f => !['Treinos Ativos', 'Biblioteca de Exercícios', 'Chat e Suporte', 'Gamificação e Conquistas', 'Gráficos e Analytics'].includes(f)).map((extraFeature, i) => (
-                    <div key={`extra-${i}`} className="plano-feature included">
-                      <Check size={14} className="feature-check text-emerald-500" />
-                      <span className="text-white">{extraFeature}</span>
+                  {/* Extra features directly from DB (if they don't match the standard ones) */}
+                  {p.features.filter(f => !['Treinos Ativos', 'Biblioteca de Exercícios', 'Chat e Suporte', 'Gamificação e Conquistas', 'Gráficos e Analytics'].some(base => f.toLowerCase().includes(base.toLowerCase()))).map((extraFeature, i) => (
+                    <div key={`extra-${i}`} className="pl-feature included">
+                      <Check size={16} className="pl-feat-icon inc" />
+                      <span>{extraFeature}</span>
                     </div>
                   ))}
                 </div>
 
-                <div className="plano-actions">
+                {/* Status Administrativo no Card */}
+                {isAdmin && (
+                  <div className="pl-admin-stats">
+                     <div className="pl-admin-stat">
+                       <span className="pl-admin-stat-lbl">Status</span>
+                       <span className="pl-admin-stat-val text-emerald-400">Ativo</span>
+                     </div>
+                     <div className="pl-admin-stat" style={{textAlign: 'right'}}>
+                       <span className="pl-admin-stat-lbl">Assinantes</span>
+                       <span className="pl-admin-stat-val">{p.assinantes || 0}</span>
+                     </div>
+                  </div>
+                )}
+
+                <div className="pl-card-actions">
                   {isAdmin ? (
                     <>
                       <button 
-                        className="btn-action-edit"
+                        className="pl-btn pl-btn-edit"
                         onClick={() => navigate(`/planos/editar/${p.id}`)}
                       >
-                        <Pencil size={16} /> Edit
+                        <Pencil size={16} /> Editar plano
                       </button>
                       <button 
-                        className="btn-action-delete"
+                        className="pl-btn pl-btn-delete"
                         onClick={async () => {
-                          if (confirm('Tem certeza?')) {
+                          if (confirm('Tem certeza que deseja excluir o plano?')) {
                              await supabase.from('planos').delete().eq('id', p.id);
                              loadData()
                           }
                         }}
+                        title="Excluir plano"
                       >
-                        <Trash2 size={16} /> Del
+                        <Trash2 size={16} />
                       </button>
                     </>
                   ) : (
                     <button
-                      className={`plano-btn ${p.popular ? 'btn-premium' : 'btn-basic'}`}
+                      className={`pl-btn ${p.popular ? 'pl-btn-primary' : 'pl-btn-secondary'}`}
                       disabled={isCurrentActive || userAssinatura?.status === 'pendente'}
                       onClick={() => startAssistant(p)}
+                      style={{width: '100%'}}
                     >
                       {isPendingThis ? (
                         <>
-                          <Clock size={16} /> Ag. Pagamento
+                          <Clock size={16} /> Aguardando Pgto.
                         </>
                       ) : userAssinatura?.status === 'pendente' ? (
                         'Outro Aguardando'
                       ) : isCurrentActive ? (
                         <>
-                          <CheckCircle2 size={16} /> Plano Ativo
+                          <CheckCircle2 size={16} /> Meu Plano Atual
                         </>
                       ) : (
                         <>
-                          <Zap size={16} /> Assinar
+                          <Zap size={16} /> Selecionar Plano
                         </>
                       )}
                     </button>
@@ -512,7 +557,7 @@ Você receberá acesso quando o personal confirmar o recebimento via Painel de C
         </div>
       )}
 
-      {/* AI Assistant Modal */}
+      {/* ── AI Assistant Modal ── */}
       {showAssistant && (
         <div className="assistant-overlay" onClick={() => setShowAssistant(false)}>
           <div className="assistant-modal" onClick={e => e.stopPropagation()}>
@@ -558,7 +603,7 @@ Você receberá acesso quando o personal confirmar o recebimento via Painel de C
                           <span className="pix-key-icon">📧</span>
                           <code className="pix-key-code">{msg.pixData.pixKey}</code>
                           <button className="btn-copy" onClick={() => copyToClipboard(msg.pixData!.pixKey)}>
-                            <Copy size={14} /> Copiar
+                            <Copy size={14} /> Copiar Chave
                           </button>
                         </div>
                       </div>
@@ -579,28 +624,28 @@ Você receberá acesso quando o personal confirmar o recebimento via Painel de C
             </div>
 
             <div className="assistant-input-area">
-              <div className="quick-actions">
+              <div className="quick-actions" style={{marginBottom: '0.5rem'}}>
                 {chatStep === 'greeting' && (
                   <button onClick={() => handleUserMessage('Sim')}>✅ Sim, continuar</button>
                 )}
                 {chatStep === 'payment' && (
-                  <button onClick={() => handleUserMessage('Gerar PIX')} className="btn-generate-pix">
+                  <button onClick={() => handleUserMessage('Gerar PIX')} style={{color: '#a78bfa', borderColor: '#8b5cf6'}}>
                     💳 Gerar PIX
                   </button>
                 )}
                 {chatStep === 'confirming' && (
-                  <button onClick={() => handleUserMessage('Já paguei')}>✅ Já paguei</button>
+                  <button onClick={() => handleUserMessage('Já paguei')} style={{color: '#34d399', borderColor: '#10b981'}}>✅ Já paguei</button>
                 )}
                 {chatStep === 'done' && (
                   <button onClick={() => { setShowAssistant(false); loadData(); }}>🏠 Fechar</button>
                 )}
               </div>
-              <div className="input-wrapper">
+              <div className="input-wrapper" style={{display: 'none'}}>
                 <input
                   type="text"
                   value={inputText}
                   disabled
-                  placeholder="Selecione acima..."
+                  placeholder="Selecione uma opção acima..."
                 />
               </div>
             </div>

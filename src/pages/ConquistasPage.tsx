@@ -1,11 +1,16 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Trophy, Star, Target, TrendingUp, Calendar, Loader2, User, Eye, Plus, Award } from 'lucide-react'
+import {
+  Trophy, Star, Target, TrendingUp, Calendar, Loader2, User,
+  Eye, Plus, Award, Search, Users, CheckCircle2, BarChart2,
+  Flame, ChevronRight, Filter, ArrowUpDown, Zap,
+} from 'lucide-react'
 import { achievements as templateAchievements, getUnlockedCount, getTotalXP, getProgressByCategory, type Achievement } from '../data/achievementsData'
 import { useAuth } from '../context/AuthContext'
 import { supabase } from '../lib/supabase'
 import { getPresenceStats } from '../lib/presenceManager'
 import ProtectedFeature from '../components/ProtectedFeature'
+import './ConquistasPersonal.css'
 
 const categories = [
   { value: 'all', label: 'Todas', icon: Trophy },
@@ -365,97 +370,370 @@ function TelaAluno({ user }: { user: any }) {
   )
 }
 
-function TelaPersonal() {
-  const navigate = useNavigate()
-  const [alunos, setAlunos] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-  useEffect(() => {
-    const fetchAlunos = async () => {
-      try {
-        setLoading(true)
-        const { data: profiles } = await supabase
-          .from('profiles')
-          .select('id, name, avatar_url, plan_expires_at')
-          .eq('role', 'aluno')
+const GRAD = [
+  'linear-gradient(135deg,#8b5cf6,#6366f1)',
+  'linear-gradient(135deg,#06b6d4,#0284c7)',
+  'linear-gradient(135deg,#10b981,#059669)',
+  'linear-gradient(135deg,#f59e0b,#d97706)',
+  'linear-gradient(135deg,#ec4899,#db2777)',
+]
+function avatarGrad(name: string) {
+  let h = 0
+  for (let i = 0; i < name.length; i++) h = name.charCodeAt(i) + ((h << 5) - h)
+  return GRAD[Math.abs(h) % GRAD.length]
+}
 
-        if (profiles) {
-          // Fetch achievements counts for each student
-          const { data: achievementsData } = await supabase
-            .from('achievements')
-            .select('user_id, unlocked')
-            .in('user_id', profiles.map(p => p.id))
+type SortMode = 'name' | 'progress_desc' | 'progress_asc' | 'achievements'
 
-          const formatted = profiles.map(aluno => {
-            const isExpired = aluno.plan_expires_at && new Date(aluno.plan_expires_at) < new Date()
-            const alunoAchievements = achievementsData?.filter(a => a.user_id === aluno.id && a.unlocked) || []
-            return {
-              ...aluno,
-              status: isExpired ? 'baixa_atividade' : 'ativo',
-              achievementsCount: alunoAchievements.length
-            }
-          })
-          setAlunos(formatted)
-        }
-      } catch (error) {
-        console.error('Erro ao buscar alunos e conquistas:', error)
-      } finally {
-        setLoading(false)
-      }
-    }
-    fetchAlunos()
-  }, [])
+interface AlunoEnhanced {
+  id: string
+  name: string
+  plan: string
+  planStatus: 'ativo' | 'inativo'
+  achievementsCount: number
+  totalAchievements: number
+  progressPct: number
+  trainedToday: boolean
+  isHighlight: boolean
+  weekSessions: number
+}
 
+// ── Skeleton ─────────────────────────────────────────────────────────────────
+
+function CQSkeletonCard() {
   return (
-    <div className="w-full max-w-6xl mx-auto px-4 md:px-0 pb-10">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-10">
-        <div className="flex items-center gap-5">
-          <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500 to-indigo-600 flex items-center justify-center shadow-[0_8px_20px_-5px_rgba(139,92,246,0.4)]">
-            <Trophy size={32} className="text-white" />
-          </div>
-          <div>
-            <h2 className="text-3xl md:text-4xl font-black tracking-tight text-white uppercase italic">
-              Gestão de <span className="text-purple-500">Conquistas</span>
-            </h2>
-            <p className="text-gray-400 font-medium tracking-wide">Monitore e celebre a evolução dos seus atletas</p>
+    <div className="cq-skeleton-card">
+      <div className="cq-skeleton-header">
+        <div className="cq-skel" style={{ width: 56, height: 56, borderRadius: '50%', flexShrink: 0 }} />
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          <div className="cq-skel" style={{ height: 14, width: '55%' }} />
+          <div className="cq-skel" style={{ height: 11, width: '30%' }} />
+        </div>
+      </div>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+        <div className="cq-skel" style={{ height: 10, width: '40%' }} />
+        <div className="cq-skel" style={{ height: 7, width: '100%', borderRadius: 999 }} />
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3,1fr)', gap: 8 }}>
+        {[1,2,3].map(i => <div key={i} className="cq-skel" style={{ height: 54, borderRadius: '0.625rem' }} />)}
+      </div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        <div className="cq-skel" style={{ flex: 1, height: 40, borderRadius: '0.625rem' }} />
+        <div className="cq-skel" style={{ flex: 1, height: 40, borderRadius: '0.625rem' }} />
+      </div>
+    </div>
+  )
+}
+
+// ── Student Card ──────────────────────────────────────────────────────────────
+
+function CQStudentCard({ aluno, navigate }: { aluno: AlunoEnhanced; navigate: ReturnType<typeof useNavigate> }) {
+  return (
+    <div
+      className={`cq-student-card ${aluno.isHighlight ? 'card-highlight' : ''}`}
+      style={{ animationDelay: '0ms' }}
+    >
+      {/* Header */}
+      <div className="cq-card-header">
+        <div className="cq-avatar-wrap">
+          <div className="cq-avatar-ring" />
+          <div className="cq-avatar-inner" style={{ background: avatarGrad(aluno.name) }}>
+            {aluno.name.charAt(0).toUpperCase()}
           </div>
         </div>
 
-        <button
-          onClick={() => navigate('/conquistas/criar')}
-          className="flex items-center gap-3 px-6 h-14 rounded-2xl bg-white/5 border border-white/10 text-white font-bold uppercase tracking-widest hover:bg-white/10 transition-all duration-300 active:scale-95 group"
-        >
-          <Award size={20} className="text-purple-400 group-hover:scale-110 transition-transform" />
-          <span>Nova conquista global</span>
-        </button>
+        <div className="cq-card-identity">
+          <div className="cq-card-name-row">
+            <span className="cq-card-name">{aluno.name}</span>
+            {aluno.isHighlight && (
+              <span className="cq-badge cq-badge-star"><Trophy size={8} />Top</span>
+            )}
+            {aluno.trainedToday && (
+              <span className="cq-badge cq-badge-hot"><Flame size={8} />Hoje</span>
+            )}
+          </div>
+          <div className="cq-card-plan">
+            <span className={`cq-badge ${aluno.planStatus === 'ativo' ? 'cq-badge-active' : 'cq-badge-inactive'}`}>
+              {aluno.planStatus === 'ativo' ? 'Ativo' : 'Inativo'}
+            </span>
+            <span style={{ marginLeft: '0.25rem' }}>{aluno.plan}</span>
+          </div>
+        </div>
       </div>
 
+      {/* Progress */}
+      <div className="cq-card-progress">
+        <div className="cq-progress-header">
+          <span className="cq-progress-label">Progresso geral</span>
+          <span className="cq-progress-count">
+            {aluno.achievementsCount}<span>/{aluno.totalAchievements}</span>
+          </span>
+        </div>
+        <div className="cq-progress-bar-track">
+          <div className="cq-progress-bar-fill" style={{ width: `${aluno.progressPct}%` }} />
+        </div>
+        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+          <span className="cq-progress-pct">{aluno.progressPct}%</span>
+        </div>
+      </div>
+
+      {/* Mini stats */}
+      <div className="cq-mini-stats">
+        <div className="cq-mini-stat">
+          <div className="cq-mini-stat-value" style={{ color: '#a78bfa' }}>{aluno.achievementsCount}</div>
+          <div className="cq-mini-stat-label">Conquistadas</div>
+        </div>
+        <div className="cq-mini-stat">
+          <div className="cq-mini-stat-value" style={{ color: '#22d3ee' }}>{aluno.totalAchievements - aluno.achievementsCount}</div>
+          <div className="cq-mini-stat-label">Restantes</div>
+        </div>
+        <div className="cq-mini-stat">
+          <div className="cq-mini-stat-value" style={{ color: '#34d399' }}>{aluno.weekSessions}</div>
+          <div className="cq-mini-stat-label">Semana</div>
+        </div>
+      </div>
+
+      {/* Actions */}
+      <div className="cq-card-actions">
+        <button
+          className="cq-btn cq-btn-ghost cq-btn-sm"
+          onClick={e => { e.stopPropagation(); navigate(`/conquistas/aluno/${aluno.id}`) }}
+        >
+          <Eye size={14} />
+          Ver progresso
+        </button>
+        <button
+          className="cq-btn cq-btn-primary cq-btn-sm"
+          onClick={e => { e.stopPropagation(); navigate(`/conquistas/criar?aluno=${aluno.id}`) }}
+        >
+          <Plus size={14} />
+          Gerenciar
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ── Main TelaPersonal ─────────────────────────────────────────────────────────
+
+function TelaPersonal() {
+  const navigate = useNavigate()
+  const [alunos, setAlunos] = useState<AlunoEnhanced[]>([])
+  const [loading, setLoading] = useState(true)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [filterTab, setFilterTab] = useState<'all' | 'ativo' | 'inativo'>('all')
+  const [sortMode, setSortMode] = useState<SortMode>('progress_desc')
+
+  const totalAch = templateAchievements.length
+
+  const load = useCallback(async () => {
+    try {
+      setLoading(true)
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('id, name, plan, plan_expires_at')
+        .eq('role', 'aluno')
+
+      if (!profiles?.length) { setAlunos([]); setLoading(false); return }
+
+      const now = new Date()
+      const todayStr = now.toISOString().split('T')[0]
+      const weekAgo = new Date(now.getTime() - 7 * 86400000).toISOString()
+      const ids = profiles.map(p => p.id)
+
+      const [{ data: achData }, { data: presence }] = await Promise.all([
+        supabase.from('achievements').select('user_id, unlocked').in('user_id', ids),
+        supabase.from('workout_presence').select('user_id, date, created_at').in('user_id', ids),
+      ])
+
+      const todaySet = new Set<string>()
+      const weekMap = new Map<string, number>()
+      for (const p of presence || []) {
+        if (p.date === todayStr) todaySet.add(p.user_id)
+        if (p.created_at >= weekAgo) weekMap.set(p.user_id, (weekMap.get(p.user_id) || 0) + 1)
+      }
+
+      const formatted: AlunoEnhanced[] = profiles.map(profile => {
+        const expired = profile.plan_expires_at && new Date(profile.plan_expires_at) < now
+        const aCount = achData?.filter(a => a.user_id === profile.id && a.unlocked).length || 0
+        const pct = totalAch > 0 ? Math.round((aCount / totalAch) * 100) : 0
+        return {
+          id: profile.id,
+          name: profile.name || 'Aluno',
+          plan: profile.plan || 'Free',
+          planStatus: expired ? 'inativo' : 'ativo',
+          achievementsCount: aCount,
+          totalAchievements: totalAch,
+          progressPct: pct,
+          trainedToday: todaySet.has(profile.id),
+          isHighlight: pct >= 80,
+          weekSessions: weekMap.get(profile.id) || 0,
+        }
+      })
+
+      setAlunos(formatted)
+    } catch (err) {
+      console.error('Erro ao buscar conquistas:', err)
+    } finally {
+      setLoading(false)
+    }
+  }, [totalAch])
+
+  useEffect(() => { load() }, [load])
+
+  // ── Computed KPIs ──────────────────────────────────────────────────────────
+
+  const kpis = useMemo(() => ({
+    totalStudents: alunos.length,
+    withAchievements: alunos.filter(a => a.achievementsCount > 0).length,
+    totalUnlocked: alunos.reduce((s, a) => s + a.achievementsCount, 0),
+    avgProgress: alunos.length > 0
+      ? Math.round(alunos.reduce((s, a) => s + a.progressPct, 0) / alunos.length)
+      : 0,
+  }), [alunos])
+
+  // ── Filter + Sort ──────────────────────────────────────────────────────────
+
+  const filtered = useMemo(() => {
+    let list = alunos.filter(a => {
+      const q = searchQuery.toLowerCase()
+      return a.name.toLowerCase().includes(q)
+    })
+    if (filterTab !== 'all') list = list.filter(a => a.planStatus === filterTab)
+    list = [...list].sort((a, b) => {
+      if (sortMode === 'name') return a.name.localeCompare(b.name, 'pt-BR')
+      if (sortMode === 'progress_desc') return b.progressPct - a.progressPct
+      if (sortMode === 'progress_asc') return a.progressPct - b.progressPct
+      if (sortMode === 'achievements') return b.achievementsCount - a.achievementsCount
+      return 0
+    })
+    return list
+  }, [alunos, searchQuery, filterTab, sortMode])
+
+  return (
+    <div className="cq-page">
+
+      {/* HERO HEADER */}
+      <div className="cq-hero">
+        <div className="cq-hero-left">
+          <div className="cq-hero-icon">
+            <Trophy size={30} />
+          </div>
+          <div className="cq-hero-text">
+            <h1>Gestão de <span>Conquistas</span></h1>
+            <p>Acompanhe e desbloqueie a evolução dos seus alunos</p>
+          </div>
+        </div>
+        <div className="cq-hero-actions">
+          <button className="cq-btn cq-btn-ghost" onClick={() => navigate('/alunos')}>
+            <Users size={15} />
+            Alunos
+          </button>
+          <button className="cq-btn cq-btn-primary" onClick={() => navigate('/conquistas/criar')}>
+            <Plus size={15} />
+            Nova Conquista Global
+          </button>
+        </div>
+      </div>
+
+      {/* KPI STRIP */}
+      <div className="cq-kpi-strip">
+        <div className="cq-kpi-card"
+          style={{ '--k-bg': 'rgba(139,92,246,0.12)', '--k-color': '#a78bfa', '--k-color2': '#6366f1', '--k-glow': 'rgba(139,92,246,0.12)', '--k-border': 'rgba(139,92,246,0.3)' } as React.CSSProperties}>
+          <div className="cq-kpi-icon"><Users size={22} /></div>
+          <div>
+            <div className="cq-kpi-value">{loading ? '—' : kpis.totalStudents}</div>
+            <div className="cq-kpi-label">Alunos cadastrados</div>
+          </div>
+        </div>
+
+        <div className="cq-kpi-card"
+          style={{ '--k-bg': 'rgba(16,185,129,0.12)', '--k-color': '#34d399', '--k-color2': '#10b981', '--k-glow': 'rgba(16,185,129,0.08)', '--k-border': 'rgba(16,185,129,0.3)' } as React.CSSProperties}>
+          <div className="cq-kpi-icon"><CheckCircle2 size={22} /></div>
+          <div>
+            <div className="cq-kpi-value">{loading ? '—' : kpis.withAchievements}</div>
+            <div className="cq-kpi-label">Com conquistas ativas</div>
+          </div>
+        </div>
+
+        <div className="cq-kpi-card"
+          style={{ '--k-bg': 'rgba(99,102,241,0.12)', '--k-color': '#818cf8', '--k-color2': '#a78bfa', '--k-glow': 'rgba(99,102,241,0.1)', '--k-border': 'rgba(99,102,241,0.3)' } as React.CSSProperties}>
+          <div className="cq-kpi-icon"><Award size={22} /></div>
+          <div>
+            <div className="cq-kpi-value">{loading ? '—' : kpis.totalUnlocked}</div>
+            <div className="cq-kpi-label">Conquistas desbloqueadas</div>
+          </div>
+        </div>
+
+        <div className="cq-kpi-card"
+          style={{ '--k-bg': 'rgba(6,182,212,0.12)', '--k-color': '#22d3ee', '--k-color2': '#38bdf8', '--k-glow': 'rgba(6,182,212,0.1)', '--k-border': 'rgba(6,182,212,0.3)' } as React.CSSProperties}>
+          <div className="cq-kpi-icon"><BarChart2 size={22} /></div>
+          <div>
+            <div className="cq-kpi-value">{loading ? '—' : `${kpis.avgProgress}%`}</div>
+            <div className="cq-kpi-label">Taxa média de progresso</div>
+            <div className="cq-kpi-bar-wrap">
+              <div className="cq-kpi-bar-fill" style={{ width: `${loading ? 0 : kpis.avgProgress}%` }} />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* TOOLBAR */}
+      <div className="cq-toolbar">
+        <div className="cq-search">
+          <Search size={14} />
+          <input
+            placeholder="Buscar aluno..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        <div className="cq-filter-tabs">
+          {([['all','Todos'],['ativo','Ativos'],['inativo','Inativos']] as const).map(([tab,label]) => (
+            <button
+              key={tab}
+              className={`cq-filter-tab ${filterTab === tab ? 'active' : ''}`}
+              onClick={() => setFilterTab(tab)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <select
+          className="cq-sort-select"
+          value={sortMode}
+          onChange={e => setSortMode(e.target.value as SortMode)}
+        >
+          <option value="progress_desc">Maior progresso</option>
+          <option value="progress_asc">Menor progresso</option>
+          <option value="achievements">Mais conquistas</option>
+          <option value="name">Nome A–Z</option>
+        </select>
+      </div>
+
+      {/* STUDENT CARDS */}
       {loading ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          <SkeletonCard />
-          <SkeletonCard />
-          <SkeletonCard />
+        <div className="cq-students-grid">
+          {[1,2,3,4,5,6].map(i => <CQSkeletonCard key={i} />)}
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="cq-empty">
+          <Trophy size={48} />
+          <h3>{searchQuery ? 'Nenhum resultado encontrado' : 'Nenhum aluno cadastrado'}</h3>
+          <p>{searchQuery ? 'Tente outro nome ou ajuste os filtros.' : 'Adicione alunos para começar a gerenciar conquistas.'}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {alunos.map(aluno => (
-            <StudentAchievementCard
-              key={aluno.id}
-              aluno={aluno}
-              navigate={navigate}
-            />
+        <div className="cq-students-grid">
+          {filtered.map(aluno => (
+            <CQStudentCard key={aluno.id} aluno={aluno} navigate={navigate} />
           ))}
-          {alunos.length === 0 && (
-            <div className="col-span-full py-20 text-center bg-white/5 backdrop-blur-xl border border-white/10 rounded-[32px]">
-              <div className="w-20 h-20 bg-white/5 rounded-full flex items-center justify-center mx-auto mb-4">
-                <User size={40} className="text-gray-600" />
-              </div>
-              <h3 className="text-xl font-bold text-white mb-2 uppercase italic tracking-wider">Nenhum Atleta Encontrado</h3>
-              <p className="text-gray-500 max-w-xs mx-auto">Adicione novos alunos para começar a gerenciar suas conquistas personalizadas.</p>
-            </div>
-          )}
         </div>
       )}
+
     </div>
   )
 }

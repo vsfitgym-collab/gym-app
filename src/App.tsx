@@ -13,6 +13,7 @@ import type { ReactNode } from 'react'
 initNotifications()
 
 const DashboardPage = lazy(() => import('./pages/DashboardPage'))
+const DashboardPersonalPage = lazy(() => import('./pages/DashboardPersonalPage'))
 const AlunosPage = lazy(() => import('./pages/AlunosPage'))
 const TreinosPage = lazy(() => import('./pages/TreinosPage'))
 const TreinoPage = lazy(() => import('./pages/TreinoPage'))
@@ -24,7 +25,7 @@ const ConquistasPage = lazy(() => import('./pages/ConquistasPage'))
 const ChatPage = lazy(() => import('./pages/ChatPage'))
 const FinanceiroPage = lazy(() => import('./pages/FinanceiroPage'))
 const PlanosPage = lazy(() => import('./pages/PlanosPage'))
-const PendingPaymentsPage = lazy(() => import('./pages/PendingPaymentsPage'))
+const PagamentosPage = lazy(() => import('./pages/PagamentosPage'))
 const CriarPlanoPage = lazy(() => import('./pages/planos/CriarPlanoPage'))
 const EditarPlanoPage = lazy(() => import('./pages/planos/EditarPlanoPage'))
 const ConquistasAlunoPage = lazy(() => import('./pages/ConquistasAlunoPage'))
@@ -75,12 +76,12 @@ function AppRoutes() {
             {role === 'personal' ? <LayoutPersonal /> : <LayoutAluno />}
           </ProtectedRoute>
         }>
-          <Route index element={<DashboardPage />} />
+          <Route index element={role === 'personal' ? <DashboardPersonalPage /> : <DashboardPage />} />
           
           {/* Rotas Only Personal */}
           <Route path="alunos" element={role === 'personal' ? <AlunosPage /> : <Navigate to="/" replace />} />
           <Route path="financeiro" element={role === 'personal' ? <FinanceiroPage /> : <Navigate to="/" replace />} />
-          <Route path="pagamentos" element={role === 'personal' ? <PendingPaymentsPage /> : <Navigate to="/" replace />} />
+          <Route path="pagamentos" element={role === 'personal' ? <PagamentosPage /> : <Navigate to="/" replace />} />
           <Route path="treinos/criar" element={role === 'personal' ? <CriarTreinoPage /> : <Navigate to="/" replace />} />
           <Route path="treinos/editar/:id" element={role === 'personal' ? <CriarTreinoPage /> : <Navigate to="/" replace />} />
           <Route path="exercicios/editar/:id" element={role === 'personal' ? <EditarExercicioPage /> : <Navigate to="/" replace />} />

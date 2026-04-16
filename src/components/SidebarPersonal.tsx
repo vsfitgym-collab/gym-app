@@ -6,7 +6,10 @@ const navItems = [
   { path: '/', label: 'Dashboard', icon: '📊' },
   { path: '/alunos', label: 'Alunos', icon: '👥' },
   { path: '/treinos', label: 'Treinos', icon: '💪' },
+  { path: '/exercicios', label: 'Exercícios', icon: '🏋️' },
+  { path: '/conquistas', label: 'Conquistas', icon: '🏆' },
   { path: '/planos', label: 'Planos', icon: '📋' },
+  { path: '/pagamentos', label: 'Pagamentos', icon: '💳' },
   { path: '/chat', label: 'Chat', icon: '💬' },
   { path: '/financeiro', label: 'Financeiro', icon: '💰' },
 ]
