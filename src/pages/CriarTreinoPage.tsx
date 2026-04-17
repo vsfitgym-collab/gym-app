@@ -22,9 +22,10 @@ import {
   Clock,
   Layers
 } from 'lucide-react'
-import { fetchExercises, getMockExercises } from '../lib/exerciseApi'
 import type { Exercise } from '../lib/exerciseTranslations'
-import { translateTarget, translateEquipment } from '../lib/exerciseTranslations'
+import { translateBodyPart, translateTarget, translateEquipment } from '../lib/exerciseTranslations'
+import { exercises as localExercises } from '../data/exercises'
+import { getGifUrl } from '../lib/exerciseUtils'
 import './CriarTreino.css'
 
 interface ExercicioSelecionado {
@@ -76,7 +77,7 @@ export default function CriarTreinoPage() {
     is_custom_duration: false,
     exercises: []
   })
-  
+
   const [salvando, setSalvando] = useState(false)
   const [sucesso, setSucesso] = useState(false)
   const [showSelector, setShowSelector] = useState(false)
@@ -165,19 +166,22 @@ export default function CriarTreinoPage() {
     }
   }
 
-  const carregarExerciciosAPI = async () => {
+  const carregarExerciciosAPI = () => {
     setLoadingExercises(true)
     try {
-      const result = await fetchExercises(100, 0)
-      if (result.error || result.data.length === 0) {
-        const mock = await getMockExercises()
-        setApiExercises(mock)
-      } else {
-        setApiExercises(result.data)
-      }
+      const mappedExercises: Exercise[] = localExercises.map(local => ({
+        id: local.id,
+        name: local.name,
+        bodyPart: translateBodyPart(local.bodyPart),
+        target: translateTarget(local.target),
+        equipment: translateEquipment(local.equipment),
+        gif: local.gif,
+        gifUrl: getGifUrl(local),
+        instructions: []
+      }))
+      setApiExercises(mappedExercises)
     } catch {
-      const mock = await getMockExercises()
-      setApiExercises(mock)
+      setApiExercises([])
     } finally {
       setLoadingExercises(false)
     }
@@ -232,7 +236,7 @@ export default function CriarTreinoPage() {
 
   const removerExercicio = async (index: number) => {
     const ex = treino.exercises[index]
-    
+
     if (isEditMode && ex.id) {
       try {
         await supabase.from('workout_plans').delete().eq('id', ex.id)
@@ -250,7 +254,7 @@ export default function CriarTreinoPage() {
   const atualizarExercicio = (index: number, campo: string, valor: string | number) => {
     setTreino(prev => ({
       ...prev,
-      exercises: prev.exercises.map((ex, i) => 
+      exercises: prev.exercises.map((ex, i) =>
         i === index ? { ...ex, [campo]: valor } : ex
       )
     }))
@@ -284,7 +288,7 @@ export default function CriarTreinoPage() {
 
       const currentCount = existingWorkouts?.length || 0
       const workoutLimit = await checkWorkoutLimit(user.id, currentCount)
-      
+
       if (!workoutLimit.allowed) {
         showLimitToast(workoutLimit.upgradeMessage || 'Limite de treinos atingido')
         navigate('/planos')
@@ -296,7 +300,7 @@ export default function CriarTreinoPage() {
 
     try {
       if (isEditMode && id) {
-        await supabase.from('workouts').update({ 
+        await supabase.from('workouts').update({
           name: treino.nome,
           level: treino.level,
           duration_minutes: treino.is_custom_duration ? (treino.duration_minutes || getComputedDuration()) : null,
@@ -342,7 +346,7 @@ export default function CriarTreinoPage() {
       } else {
         const { data: treinoData, error: treinoError } = await supabase
           .from('workouts')
-          .insert({ 
+          .insert({
             name: treino.nome,
             level: treino.level,
             duration_minutes: treino.is_custom_duration ? (treino.duration_minutes || getComputedDuration()) : null,
@@ -356,7 +360,7 @@ export default function CriarTreinoPage() {
 
         for (let i = 0; i < treino.exercises.length; i++) {
           const ex = treino.exercises[i]
-          
+
           const { data: exData, error: exError } = await supabase
             .from('exercises')
             .insert({
@@ -432,7 +436,7 @@ export default function CriarTreinoPage() {
           <Dumbbell size={18} />
           <span>Informações Principais</span>
         </div>
-        
+
         <div className="form-group mb-4">
           <label className="text-sm font-medium text-slate-300 mb-2 block">Nome do Treino</label>
           <input
@@ -464,17 +468,17 @@ export default function CriarTreinoPage() {
           <div className="form-group">
             <label className="text-sm font-medium text-slate-300 mb-2 flex items-center gap-2 justify-between">
               <span className="flex items-center gap-2">
-                 <Clock size={16} className="text-indigo-400" />
-                 Duração (minutos)
+                <Clock size={16} className="text-indigo-400" />
+                Duração (minutos)
               </span>
               <label className="flex items-center gap-2 cursor-pointer text-xs font-normal">
-                 <input 
-                    type="checkbox" 
-                    className="accent-indigo-500 w-4 h-4" 
-                    checked={treino.is_custom_duration} 
-                    onChange={e => setTreino(prev => ({ ...prev, is_custom_duration: e.target.checked }))} 
-                 />
-                 <span className={treino.is_custom_duration ? "text-indigo-400 font-bold" : "text-slate-400"}>Definir manual</span>
+                <input
+                  type="checkbox"
+                  className="accent-indigo-500 w-4 h-4"
+                  checked={treino.is_custom_duration}
+                  onChange={e => setTreino(prev => ({ ...prev, is_custom_duration: e.target.checked }))}
+                />
+                <span className={treino.is_custom_duration ? "text-indigo-400 font-bold" : "text-slate-400"}>Definir manual</span>
               </label>
             </label>
             <input
@@ -487,7 +491,7 @@ export default function CriarTreinoPage() {
               max={180}
             />
             {!treino.is_custom_duration && (
-               <p className="text-xs text-slate-500 mt-1">Tempo estimado automaticamente pelos exercícios</p>
+              <p className="text-xs text-slate-500 mt-1">Tempo estimado automaticamente pelos exercícios</p>
             )}
           </div>
         </div>
@@ -520,8 +524,8 @@ export default function CriarTreinoPage() {
         ) : (
           <div className="exercicios-list">
             {treino.exercises.map((ex, index) => (
-              <div 
-                key={ex.id || index} 
+              <div
+                key={ex.id || index}
                 className="exercicio-card"
                 style={{ animationDelay: `${index * 0.05}s` }}
               >
@@ -530,14 +534,14 @@ export default function CriarTreinoPage() {
                     <GripVertical size={16} />
                     <span>{index + 1}</span>
                   </div>
-                  <button 
-                    className="btn-remover" 
+                  <button
+                    className="btn-remover"
                     onClick={() => removerExercicio(index)}
                   >
                     <Trash2 size={16} />
                   </button>
                 </div>
-                
+
                 <div className="exercicio-form">
                   <div className="form-row">
                     <div className="form-group full">
@@ -606,8 +610,8 @@ export default function CriarTreinoPage() {
         <button className="btn-cancelar" onClick={() => navigate('/treinos')}>
           Cancelar
         </button>
-        <button 
-          className="btn-salvar" 
+        <button
+          className="btn-salvar"
           onClick={salvarTreino}
           disabled={salvando}
         >
@@ -646,49 +650,49 @@ export default function CriarTreinoPage() {
             </div>
 
             <div className="selector-filters">
-              <button 
+              <button
                 className={`filter-chip ${selectedFilter === 'all' ? 'active' : ''}`}
                 onClick={() => setSelectedFilter('all')}
               >
                 Todos
               </button>
-              <button 
+              <button
                 className={`filter-chip ${selectedFilter === 'pectorals' ? 'active' : ''}`}
                 onClick={() => setSelectedFilter('pectorals')}
               >
                 Peito
               </button>
-              <button 
+              <button
                 className={`filter-chip ${selectedFilter === 'lats' || selectedFilter === 'upper back' ? 'active' : ''}`}
                 onClick={() => setSelectedFilter('lats')}
               >
                 Costas
               </button>
-              <button 
+              <button
                 className={`filter-chip ${selectedFilter === 'quads' || selectedFilter === 'glutes' ? 'active' : ''}`}
                 onClick={() => setSelectedFilter('quads')}
               >
                 Perna
               </button>
-              <button 
+              <button
                 className={`filter-chip ${selectedFilter === 'delts' ? 'active' : ''}`}
                 onClick={() => setSelectedFilter('delts')}
               >
                 Ombro
               </button>
-              <button 
+              <button
                 className={`filter-chip ${selectedFilter === 'biceps' ? 'active' : ''}`}
                 onClick={() => setSelectedFilter('biceps')}
               >
                 Bíceps
               </button>
-              <button 
+              <button
                 className={`filter-chip ${selectedFilter === 'triceps' ? 'active' : ''}`}
                 onClick={() => setSelectedFilter('triceps')}
               >
                 Tríceps
               </button>
-              <button 
+              <button
                 className={`filter-chip ${selectedFilter === 'abs' ? 'active' : ''}`}
                 onClick={() => setSelectedFilter('abs')}
               >

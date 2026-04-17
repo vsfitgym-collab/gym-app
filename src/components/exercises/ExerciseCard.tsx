@@ -1,7 +1,7 @@
 import { useState, useCallback, memo, useEffect } from 'react'
 import { Target, Wrench, Edit3, Plus, Trash2 } from 'lucide-react'
 import type { Exercise } from '../../lib/exerciseTranslations'
-import { getSupabaseGifUrl } from '../../lib/exerciseUtils'
+import { getGifUrl, getSupabaseGifUrl, normalizePath, SUPABASE_URL, getImageFallback } from '../../lib/exerciseUtils'
 import './ExerciseCard.css'
 
 interface ExerciseCardProps {
@@ -13,16 +13,16 @@ interface ExerciseCardProps {
 export const ExerciseCard = memo(function ExerciseCard({ exercise, onClick, onEdit }: ExerciseCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
-  const [currentGifUrl, setCurrentGifUrl] = useState(() => exercise.gifUrl || getSupabaseGifUrl(exercise.name))
+  const [currentGifUrl, setCurrentGifUrl] = useState(() => exercise.gifUrl || getGifUrl({ name: exercise.name, gif: exercise.gif || '', id: '', bodyPart: '', target: '', equipment: '' }))
   const [fallbackLevel, setFallbackLevel] = useState(0)
 
-  // Reset states when the exercise changes
   useEffect(() => {
-    setCurrentGifUrl(exercise.gifUrl || getSupabaseGifUrl(exercise.name))
+    const baseUrl = exercise.gifUrl || getGifUrl({ name: exercise.name, gif: exercise.gif || '', id: '', bodyPart: '', target: '', equipment: '' })
+    setCurrentGifUrl(baseUrl)
     setFallbackLevel(0)
     setImageError(false)
     setImageLoaded(false)
-  }, [exercise.name, exercise.gifUrl])
+  }, [exercise.name, exercise.gifUrl, exercise.gif])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -36,22 +36,17 @@ export const ExerciseCard = memo(function ExerciseCard({ exercise, onClick, onEd
 
   const handleImageError = useCallback(() => {
     if (fallbackLevel === 0) {
-      if (currentGifUrl === exercise.gifUrl) {
-          // If native API url failed, try Proxied
-          setFallbackLevel(1)
-          setCurrentGifUrl(`https://corsproxy.io/?${encodeURIComponent(exercise.gifUrl || '')}`)
-      } else {
-          // If Supabase failed (which happens if API url was blank), and fallback is done
-          setImageError(true)
-      }
+      setFallbackLevel(1)
+      const slug = normalizePath(exercise.name)
+      setCurrentGifUrl(`${SUPABASE_URL}/storage/v1/object/public/exercicios/${slug}.gif`)
     } else if (fallbackLevel === 1) {
-      // If corsproxy failed, try Supabase as ultimate salvation
       setFallbackLevel(2)
       setCurrentGifUrl(getSupabaseGifUrl(exercise.name))
-    } else if (fallbackLevel === 2) {
+    } else {
+      setCurrentGifUrl(getImageFallback())
       setImageError(true)
     }
-  }, [fallbackLevel, exercise.gifUrl, currentGifUrl, exercise.name])
+  }, [fallbackLevel, exercise.name])
 
   return (
     <div className="exercise-card" onClick={handleClick}>
@@ -97,7 +92,7 @@ export const ExerciseCard = memo(function ExerciseCard({ exercise, onClick, onEd
 
       <div className="exercise-body">
         <h3 className="exercise-name">{exercise.name}</h3>
-        
+
         <div className="exercise-tags">
           <span className="exercise-tag target">
             <Target size={12} />
@@ -121,10 +116,10 @@ interface ExerciseListProps {
   onEditClick?: (exercise: Exercise) => void
 }
 
-export const ExerciseList = memo(function ExerciseList({ 
-  exercises, 
-  loading, 
-  error, 
+export const ExerciseList = memo(function ExerciseList({
+  exercises,
+  loading,
+  error,
   onExerciseClick,
   onEditClick
 }: ExerciseListProps) {
@@ -161,13 +156,13 @@ export const ExerciseList = memo(function ExerciseList({
   return (
     <div className="exercise-list">
       {exercises.map((exercise, index) => (
-        <div 
-          key={exercise.id} 
+        <div
+          key={exercise.id}
           className="exercise-card-wrapper"
           style={{ animationDelay: `${index * 0.05}s` }}
         >
-          <ExerciseCard 
-            exercise={exercise} 
+          <ExerciseCard
+            exercise={exercise}
             onClick={onExerciseClick}
             onEdit={onEditClick}
           />

@@ -4,7 +4,8 @@ export interface Exercise {
   bodyPart: string
   target: string
   equipment: string
-  gifUrl: string
+  gif?: string
+  gifUrl?: string
   instructions: string[]
 }
 
@@ -82,7 +83,7 @@ export const translateEquipment = (equipment: string): string => {
 
 export const generateInstructions = (target: string, _exerciseName?: string): string[] => {
   const translatedTarget = translateTarget(target)
-  
+
   const baseInstructions = [
     `Posicione-se corretamente antes de iniciar o movimento`,
     `Execute o movimento de forma controlada, focando no músculo ${translatedTarget.toLowerCase()}`,
@@ -144,11 +145,11 @@ export const generateInstructions = (target: string, _exerciseName?: string): st
     ],
   }
 
-  const key = Object.keys(specificInstructions).find(k => 
+  const key = Object.keys(specificInstructions).find(k =>
     translatedTarget.toLowerCase().includes(k)
   )
 
-  return key 
+  return key
     ? [...specificInstructions[key], ...baseInstructions.slice(2)]
     : baseInstructions
 }
@@ -158,8 +159,8 @@ export const translateExercise = (exercise: Exercise): Exercise => ({
   bodyPart: translateBodyPart(exercise.bodyPart),
   target: translateTarget(exercise.target),
   equipment: translateEquipment(exercise.equipment),
-  instructions: exercise.instructions.length > 0 
-    ? exercise.instructions 
+  instructions: exercise.instructions.length > 0
+    ? exercise.instructions
     : generateInstructions(exercise.target, exercise.name),
 })
 
