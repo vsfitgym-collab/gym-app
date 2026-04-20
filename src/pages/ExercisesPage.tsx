@@ -2,46 +2,30 @@ import { useState, useMemo, useEffect } from 'react'
 import { Search, X, Plus } from 'lucide-react'
 import { ExerciseList } from '../components/exercises/ExerciseCard'
 import type { Exercise } from '../lib/exerciseTranslations'
-import { exercises as localExercises } from '../data/exercises'
+import { exercicios } from '../data/exercicios'
 import { bodyParts, muscleGroups, translateBodyPart, translateTarget, translateEquipment } from '../lib/exerciseTranslations'
-import { getGifUrl, normalizePath, SUPABASE_URL } from '../lib/exerciseUtils'
 import ProtectedFeature from '../components/ProtectedFeature'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import './Exercises.css'
 
-const mapLocalToExercise = (local: typeof localExercises[0]): Exercise => ({
+const mapExercicioToExercise = (local: typeof exercicios[0]): Exercise => ({
   id: local.id,
-  name: local.name,
-  bodyPart: translateBodyPart(local.bodyPart),
-  target: translateTarget(local.target),
-  equipment: translateEquipment(local.equipment),
-  gif: local.gif,
-  gifUrl: getGifUrl(local),
+  name: local.nome,
+  bodyPart: translateBodyPart(local.grupoMuscular),
+  target: translateTarget(local.grupoMuscular),
+  equipment: '',
+  gif: local.thumbnail,
+  gifUrl: local.thumbnail,
   instructions: []
 })
 
 function SafeDrawerImage({ exercise }: { exercise: Exercise }) {
-  const [currentUrl, setCurrentUrl] = useState(() => exercise.gifUrl || '')
-  const [fallbackLevel, setFallbackLevel] = useState(0)
-
-  useEffect(() => {
-    setCurrentUrl(exercise.gifUrl || '')
-    setFallbackLevel(0)
-  }, [exercise])
-
   return (
     <img
-      src={currentUrl}
+      src={exercise.gifUrl || ''}
       alt={exercise.name}
       referrerPolicy="no-referrer"
-      onError={() => {
-        if (fallbackLevel === 0 && exercise.name) {
-          setFallbackLevel(1)
-          const slug = normalizePath(exercise.name)
-          setCurrentUrl(`${SUPABASE_URL}/storage/v1/object/public/exercicios/${slug}.gif`)
-        }
-      }}
     />
   )
 }
@@ -62,7 +46,7 @@ export default function ExercisesPage() {
   const [activeExercise, setActiveExercise] = useState<Exercise | null>(null)
 
   const allExercises = useMemo(() => {
-    return localExercises.map(mapLocalToExercise)
+    return exercicios.map(mapExercicioToExercise)
   }, [])
 
   const filteredExercises = useMemo(() => {
@@ -79,10 +63,24 @@ export default function ExercisesPage() {
         (selectedBodyPart === 'upper legs' && (ex.bodyPart === 'Coxas Superiores' || ex.bodyPart === 'Coxas' || ex.bodyPart === 'Perna')) ||
         (selectedBodyPart === 'lower legs' && (ex.bodyPart === 'Inferiores' || ex.bodyPart === 'Pernas Inferiores')) ||
         (selectedBodyPart === 'waist' && ex.bodyPart === 'Cintura') ||
-        (selectedBodyPart === 'cardio' && ex.bodyPart === 'Cardio')
+        (selectedBodyPart === 'cardio' && ex.bodyPart === 'Cardio') ||
+        (selectedBodyPart === 'antebraco' && ex.bodyPart === 'Antebraço') ||
+        (selectedBodyPart === 'biceps' && ex.bodyPart === 'Bíceps') ||
+        (selectedBodyPart === 'pernas' && ex.bodyPart === 'Pernas') ||
+        (selectedBodyPart === 'costas' && ex.bodyPart === 'Costas') ||
+        (selectedBodyPart === 'calistenia' && ex.bodyPart === 'Calistenia') ||
+        (selectedBodyPart === 'crossfit' && ex.bodyPart === 'Crossfit')
       
       const targetMatch = selectedMuscle === 'all' || 
-        ex.target.toLowerCase().includes(selectedMuscle.toLowerCase())
+        ex.target.toLowerCase().includes(selectedMuscle.toLowerCase()) ||
+        (selectedMuscle === 'forearms' && ex.target === 'Antebraço') ||
+        (selectedMuscle === 'biceps' && ex.target === 'Bíceps') ||
+        (selectedMuscle === 'antebraco' && ex.target === 'Antebraço') ||
+        (selectedMuscle === 'costas' && ex.target === 'Costas') ||
+        (selectedMuscle === 'pernas' && ex.target === 'Pernas') ||
+        (selectedMuscle === 'calistenia' && ex.target === 'Calistenia') ||
+        (selectedMuscle === 'cardio' && ex.target === 'Cardio') ||
+        (selectedMuscle === 'crossfit' && ex.target === 'Crossfit')
       
       return matchesSearch && bodyPartMatch && targetMatch
     })
@@ -142,28 +140,29 @@ export default function ExercisesPage() {
 
         <div className="exercises-search-bar">
           <div className="search-input-wrapper">
-            <Search size={20} />
+            <Search size={20} className="search-icon" />
             <input
+              className="search-input"
               placeholder="Buscar..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
             {searchQuery && (
-              <button onClick={() => setSearchQuery('')}>
+              <button className="search-clear" onClick={() => setSearchQuery('')}>
                 <X size={14} />
               </button>
             )}
           </div>
 
           <div className="exercises-filters">
-            <select value={selectedBodyPart} onChange={(e) => setSelectedBodyPart(e.target.value)}>
+            <select className="filter-select" value={selectedBodyPart} onChange={(e) => setSelectedBodyPart(e.target.value)}>
               <option value="all">Todas áreas</option>
               {bodyParts.map(p => (
                 <option key={p.value} value={p.value}>{p.label}</option>
               ))}
             </select>
 
-            <select value={selectedMuscle} onChange={(e) => setSelectedMuscle(e.target.value)}>
+            <select className="filter-select" value={selectedMuscle} onChange={(e) => setSelectedMuscle(e.target.value)}>
               <option value="all">Todos músculos</option>
               {muscleGroups.map(m => (
                 <option key={m.value} value={m.value}>{m.label}</option>
@@ -180,7 +179,7 @@ export default function ExercisesPage() {
           exercises={paginatedExercises}
           loading={false}
           error={null}
-          onExerciseClick={setActiveExercise}
+          onExerciseClick={(exercise) => navigate(`/exercicio/${encodeURIComponent(exercise.id)}`)}
         />
 
         {hasMore && (

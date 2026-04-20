@@ -22,6 +22,12 @@ const bodyPartTranslations: Record<string, string> = {
   'neck': 'Pescoço',
   'cardio': 'Cardio',
   'all': 'Corpo Inteiro',
+  'antebraco': 'Antebraço',
+  'biceps': 'Bíceps',
+  'costas': 'Costas',
+  'pernas': 'Pernas',
+  'calistenia': 'Calistenia',
+  'crossfit': 'Crossfit',
 }
 
 const targetTranslations: Record<string, string> = {
@@ -45,6 +51,10 @@ const targetTranslations: Record<string, string> = {
   'upper back': 'Costas Superiores',
   'cardiovascular system': 'Sistema Cardiovascular',
   'squads': 'Quadríceps',
+  'antebraco': 'Antebraço',
+  'costas': 'Costas',
+  'calistenia': 'Calistenia',
+  'crossfit': 'Crossfit',
 }
 
 const equipmentTranslations: Record<string, string> = {
@@ -184,6 +194,12 @@ export const bodyParts = [
   { value: 'upper arms', label: 'Braços Superiores' },
   { value: 'upper legs', label: 'Coxas Superiores' },
   { value: 'waist', label: 'Cintura' },
+  { value: 'antebraco', label: 'Antebraço' },
+  { value: 'biceps', label: 'Bíceps' },
+  { value: 'pernas', label: 'Pernas' },
+  { value: 'calistenia', label: 'Calistenia' },
+  { value: 'cardio', label: 'Cardio' },
+  { value: 'crossfit', label: 'Crossfit' },
 ]
 
 export const muscleGroups = [
@@ -200,6 +216,12 @@ export const muscleGroups = [
   { value: 'quads', label: 'Quadríceps' },
   { value: 'traps', label: 'Trapézio' },
   { value: 'triceps', label: 'Tríceps' },
+  { value: 'antebraco', label: 'Antebraço' },
+  { value: 'pernas', label: 'Pernas' },
+  { value: 'costas', label: 'Costas' },
+  { value: 'calistenia', label: 'Calistenia' },
+  { value: 'cardio', label: 'Cardio' },
+  { value: 'crossfit', label: 'Crossfit' },
 ]
 
 export const equipmentTypes = [

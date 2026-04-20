@@ -1,7 +1,6 @@
-import { useState, useCallback, memo, useEffect } from 'react'
+import { useState, useCallback, memo } from 'react'
 import { Target, Wrench, Edit3, Plus, Trash2 } from 'lucide-react'
 import type { Exercise } from '../../lib/exerciseTranslations'
-import { getGifUrl, getSupabaseGifUrl, normalizePath, SUPABASE_URL, getImageFallback } from '../../lib/exerciseUtils'
 import './ExerciseCard.css'
 
 interface ExerciseCardProps {
@@ -13,16 +12,6 @@ interface ExerciseCardProps {
 export const ExerciseCard = memo(function ExerciseCard({ exercise, onClick, onEdit }: ExerciseCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
-  const [currentGifUrl, setCurrentGifUrl] = useState(() => exercise.gifUrl || getGifUrl({ name: exercise.name, gif: exercise.gif || '', id: '', bodyPart: '', target: '', equipment: '' }))
-  const [fallbackLevel, setFallbackLevel] = useState(0)
-
-  useEffect(() => {
-    const baseUrl = exercise.gifUrl || getGifUrl({ name: exercise.name, gif: exercise.gif || '', id: '', bodyPart: '', target: '', equipment: '' })
-    setCurrentGifUrl(baseUrl)
-    setFallbackLevel(0)
-    setImageError(false)
-    setImageLoaded(false)
-  }, [exercise.name, exercise.gifUrl, exercise.gif])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -35,18 +24,8 @@ export const ExerciseCard = memo(function ExerciseCard({ exercise, onClick, onEd
   }, [exercise, onEdit])
 
   const handleImageError = useCallback(() => {
-    if (fallbackLevel === 0) {
-      setFallbackLevel(1)
-      const slug = normalizePath(exercise.name)
-      setCurrentGifUrl(`${SUPABASE_URL}/storage/v1/object/public/exercicios/${slug}.gif`)
-    } else if (fallbackLevel === 1) {
-      setFallbackLevel(2)
-      setCurrentGifUrl(getSupabaseGifUrl(exercise.name))
-    } else {
-      setCurrentGifUrl(getImageFallback())
-      setImageError(true)
-    }
-  }, [fallbackLevel, exercise.name])
+    setImageError(true)
+  }, [])
 
   return (
     <div className="exercise-card" onClick={handleClick}>
@@ -67,7 +46,7 @@ export const ExerciseCard = memo(function ExerciseCard({ exercise, onClick, onEd
           </div>
         ) : (
           <img
-            src={currentGifUrl}
+            src={exercise.gifUrl || ''}
             alt={exercise.name}
             className={`exercise-image ${imageLoaded ? 'loaded' : ''}`}
             loading="lazy"

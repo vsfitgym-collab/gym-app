@@ -30,6 +30,7 @@ const CriarPlanoPage = lazy(() => import('./pages/planos/CriarPlanoPage'))
 const EditarPlanoPage = lazy(() => import('./pages/planos/EditarPlanoPage'))
 const ConquistasAlunoPage = lazy(() => import('./pages/ConquistasAlunoPage'))
 const CriarConquistaPage = lazy(() => import('./pages/CriarConquistaPage'))
+const ExercicioDetalhe = lazy(() => import('./pages/ExercicioDetalhe'))
 
 function LoadingScreen() {
   return (
@@ -94,6 +95,7 @@ function AppRoutes() {
           <Route path="treinos/executar/:id" element={<TreinoPage />} />
           <Route path="planos" element={<PlanosPage />} />
           <Route path="exercicios" element={<ExercisesPage />} />
+          <Route path="exercicio/:id" element={<ExercicioDetalhe />} />
           <Route path="conquistas" element={<ConquistasPage />} />
           <Route path="conquistas/aluno/:id" element={role === 'personal' ? <ConquistasAlunoPage /> : <Navigate to="/" replace />} />
           <Route path="conquistas/criar" element={role === 'personal' ? <CriarConquistaPage /> : <Navigate to="/" replace />} />
