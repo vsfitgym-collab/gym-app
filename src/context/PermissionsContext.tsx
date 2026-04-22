@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from './AuthContext'
+import { isPremium as checkPremium, isPlanActive } from '../lib/planUtils'
 
 export type SubscriptionStatus = 'ativa' | 'expirada' | 'trial' | 'pendente' | 'cancelada'
 
@@ -28,6 +29,7 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
   const [status, setStatus] = useState<SubscriptionStatus | null>(null)
   const [trialEndsAt, setTrialEndsAt] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [globalSub, setGlobalSub] = useState<any>(null)
 
   const fetchPermissions = async () => {
     if (!user) {
@@ -57,6 +59,7 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
 
         setStatus(currentStatus)
         setTrialEndsAt(globalSub.trial_ends_at)
+        setGlobalSub(globalSub)
 
         // Assign based on plan and status (Trial is always Full Access)
         if (currentStatus === 'trial') {
@@ -115,7 +118,14 @@ export function PermissionsProvider({ children }: { children: React.ReactNode })
   }, [user, role])
 
   const hasPermission = (feature: string) => {
-    if (role === 'personal') return true // Personal always has access
+    // Personal trainers need premium plan for full access
+    if (role === 'personal') {
+      const isPersonalPremium = checkPremium(globalSub?.plan) && isPlanActive(globalSub?.end_date)
+      if (!isPersonalPremium) {
+        return permissions.includes(feature.toLowerCase().trim())
+      }
+      return true
+    }
     return permissions.includes(feature.toLowerCase().trim())
   }
 

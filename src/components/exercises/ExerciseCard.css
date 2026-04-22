@@ -267,3 +267,11 @@
     display: none;
   }
 }
+
+/* Search Highlight */
+.search-highlight {
+  background: rgba(139, 92, 246, 0.4);
+  color: #fff;
+  padding: 0 2px;
+  border-radius: 2px;
+}

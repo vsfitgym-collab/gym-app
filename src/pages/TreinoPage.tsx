@@ -542,7 +542,7 @@ function TreinoPageContent() {
                 <span>🔥</span>
               </div>
               <div className="stats-card-content">
-                <span className="stats-value">3</span>
+                <span className="stats-value">-</span>
                 <span className="stats-label">Dias seguidos</span>
               </div>
             </div>
@@ -553,10 +553,10 @@ function TreinoPageContent() {
               </div>
               <div className="stats-card-content">
                 <div className="week-progress">
-                  <span className="stats-value">3/5</span>
+                  <span className="stats-value">-/-</span>
                 </div>
                 <div className="week-bar">
-                  <div className="week-bar-fill" style={{ width: '60%' }} />
+                  <div className="week-bar-fill" style={{ width: '0%' }} />
                 </div>
                 <span className="stats-label">Esta semana</span>
               </div>
@@ -567,7 +567,7 @@ function TreinoPageContent() {
                 <span>📊</span>
               </div>
               <div className="stats-card-content">
-                <span className="stats-value">12</span>
+                <span className="stats-value">-</span>
                 <span className="stats-label">Este mês</span>
               </div>
             </div>

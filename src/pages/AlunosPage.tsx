@@ -430,7 +430,7 @@ export default function AlunosPage() {
                   <tr
                     key={aluno.id}
                     className={aluno.needsAttention ? 'row-attention' : ''}
-                    onClick={() => navigate('/alunos')}
+                    onClick={() => navigate(`/alunos/${aluno.id}`)}
                   >
                     {/* Identity */}
                     <td>
@@ -516,7 +516,7 @@ export default function AlunosPage() {
                         </button>
                         <button
                           className="al-btn al-btn-violet al-btn-sm"
-                          onClick={() => navigate('/alunos')}
+                          onClick={() => navigate(`/alunos/${aluno.id}`)}
                           title="Ver ficha do aluno"
                         >
                           <Eye size={12} />

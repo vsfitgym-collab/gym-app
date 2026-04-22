@@ -1,17 +1,42 @@
 import { useState, useCallback, memo } from 'react'
-import { Target, Wrench, Edit3, Plus, Trash2 } from 'lucide-react'
+import { Target, Wrench, Edit3, Plus } from 'lucide-react'
 import type { Exercise } from '../../lib/exerciseTranslations'
+import { normalizeText } from '../../lib/grupos'
 import './ExerciseCard.css'
 
 interface ExerciseCardProps {
   exercise: Exercise
+  searchTerm?: string
   onClick?: (exercise: Exercise) => void
   onEdit?: (exercise: Exercise) => void
 }
 
-export const ExerciseCard = memo(function ExerciseCard({ exercise, onClick, onEdit }: ExerciseCardProps) {
+const IMAGE_FALLBACKS = ['.jpg', '.png', '.webp']
+
+export const ExerciseCard = memo(function ExerciseCard({ exercise, searchTerm = '', onClick, onEdit }: ExerciseCardProps) {
   const [imageLoaded, setImageLoaded] = useState(false)
   const [imageError, setImageError] = useState(false)
+  const [currentExtIndex, setCurrentExtIndex] = useState(0)
+
+  const highlightedName = useCallback((name: string, term: string) => {
+    if (!term) return name
+    const normalizedName = normalizeText(name)
+    const normalizedTerm = normalizeText(term)
+    const index = normalizedName.indexOf(normalizedTerm)
+    if (index === -1) return name
+    
+    const before = name.slice(0, index)
+    const match = name.slice(index, index + term.length)
+    const after = name.slice(index + term.length)
+    
+    return (
+      <>
+        {before}
+        <mark className="search-highlight">{match}</mark>
+        {after}
+      </>
+    )
+  }, [])
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     e.preventDefault()
@@ -23,9 +48,18 @@ export const ExerciseCard = memo(function ExerciseCard({ exercise, onClick, onEd
     onEdit?.(exercise)
   }, [exercise, onEdit])
 
-  const handleImageError = useCallback(() => {
-    setImageError(true)
-  }, [])
+  const handleImageError = useCallback((e: React.SyntheticEvent<HTMLImageElement>) => {
+    if (currentExtIndex < IMAGE_FALLBACKS.length - 1) {
+      const nextIndex = currentExtIndex + 1
+      setCurrentExtIndex(nextIndex)
+      const baseUrl = exercise.gifUrl?.replace(/\.(jpg|png|webp)$/, '')
+      if (baseUrl) {
+        e.currentTarget.src = `${baseUrl}${IMAGE_FALLBACKS[nextIndex]}`
+      }
+    } else {
+      setImageError(true)
+    }
+  }, [exercise.gifUrl, currentExtIndex])
 
   return (
     <div className="exercise-card" onClick={handleClick}>
@@ -70,7 +104,7 @@ export const ExerciseCard = memo(function ExerciseCard({ exercise, onClick, onEd
       )}
 
       <div className="exercise-body">
-        <h3 className="exercise-name">{exercise.name}</h3>
+        <h3 className="exercise-name">{highlightedName(exercise.name, searchTerm)}</h3>
 
         <div className="exercise-tags">
           <span className="exercise-tag target">
@@ -91,6 +125,7 @@ interface ExerciseListProps {
   exercises: Exercise[]
   loading?: boolean
   error?: string | null
+  searchTerm?: string
   onExerciseClick?: (exercise: Exercise) => void
   onEditClick?: (exercise: Exercise) => void
 }
@@ -99,6 +134,7 @@ export const ExerciseList = memo(function ExerciseList({
   exercises,
   loading,
   error,
+  searchTerm = '',
   onExerciseClick,
   onEditClick
 }: ExerciseListProps) {
@@ -142,6 +178,7 @@ export const ExerciseList = memo(function ExerciseList({
         >
           <ExerciseCard
             exercise={exercise}
+            searchTerm={searchTerm}
             onClick={onExerciseClick}
             onEdit={onEditClick}
           />

@@ -11,25 +11,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<UserRole>('aluno')
   const [loading, setLoading] = useState(true)
 
-  const getRoleByEmail = (email: string | undefined): UserRole => {
-    return email?.toLowerCase() === 'vsfitgym@gmail.com' ? 'personal' : 'aluno'
-  }
-
-  const fetchUserRole = useCallback(async (userId: string, email?: string): Promise<UserRole> => {
+  const fetchUserRole = useCallback(async (userId: string): Promise<UserRole> => {
     try {
-      const { data: profile } = await supabase
+      const { data: profile, error } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', userId)
         .single()
 
-      if (profile?.role === 'personal' || profile?.role === 'aluno') {
-        return profile.role
+      if (!error && profile?.role) {
+        return profile.role as UserRole
       }
 
-      return getRoleByEmail(email)
+      return 'aluno'
     } catch {
-      return getRoleByEmail(email)
+      return 'aluno'
     }
   }, [])
 
@@ -39,14 +35,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         setSession(newSession)
         setUser(newSession.user)
 
-        const userRole = await fetchUserRole(newSession.user.id, newSession.user.email)
+        const userRole = await fetchUserRole(newSession.user.id)
         setRole(userRole)
         
         try {
           await supabase.from('profiles').upsert({
             id: newSession.user.id,
-            name: newSession.user.email?.split('@')[0] || 'Usuario',
-            role: userRole
+            name: newSession.user.email?.split('@')[0] || 'Usuario'
           }, { onConflict: 'id' })
         } catch (e) {
           console.warn('Profile upsert error (non-critical):', e)

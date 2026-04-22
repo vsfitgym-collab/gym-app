@@ -6,6 +6,7 @@ import {
   planLimits,
   getTrialDaysRemaining,
 } from '../lib/subscriptionService'
+import { isPremium as checkPremium, isBasic as checkBasic } from '../lib/planUtils'
 import type { Subscription, Plan, PlanLimits } from '../types'
 
 interface UseSubscriptionReturn {
@@ -58,8 +59,8 @@ export function useSubscription(): UseSubscriptionReturn {
     loadData()
   }, [loadData])
 
-  const isPremium = currentPlan !== 'free'
-  const isBasic = currentPlan === 'basic'
+  const isPremium = checkPremium(currentPlan)
+  const isBasic = checkBasic(currentPlan)
   const limits = planLimits[currentPlan] || planLimits.free
   const trialDaysRemaining = getTrialDaysRemaining(subscription)
 

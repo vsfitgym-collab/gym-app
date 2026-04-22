@@ -3,7 +3,8 @@ import { Search, X, Plus } from 'lucide-react'
 import { ExerciseList } from '../components/exercises/ExerciseCard'
 import type { Exercise } from '../lib/exerciseTranslations'
 import { exercicios } from '../data/exercicios'
-import { bodyParts, muscleGroups, translateBodyPart, translateTarget, translateEquipment } from '../lib/exerciseTranslations'
+import { translateBodyPart, translateTarget } from '../lib/exerciseTranslations'
+import { getGruposFromExercicios, normalizeGrupo, normalizeText } from '../lib/grupos'
 import ProtectedFeature from '../components/ProtectedFeature'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
@@ -35,8 +36,9 @@ export default function ExercisesPage() {
   const isAdmin = role === 'personal'
 
   const [searchQuery, setSearchQuery] = useState('')
-  const [selectedBodyPart, setSelectedBodyPart] = useState('all')
-  const [selectedMuscle, setSelectedMuscle] = useState('all')
+  const [searchInput, setSearchInput] = useState('')
+  const [selectedGrupo, setSelectedGrupo] = useState('todos')
+  const [sortBy, setSortBy] = useState<'az' | 'za'>('az')
 
   const [page, setPage] = useState(1)
   const LIMIT = 12
@@ -45,46 +47,41 @@ export default function ExercisesPage() {
 
   const [activeExercise, setActiveExercise] = useState<Exercise | null>(null)
 
+  const gruposOptions = useMemo(() => getGruposFromExercicios(exercicios), [])
+
   const allExercises = useMemo(() => {
     return exercicios.map(mapExercicioToExercise)
   }, [])
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setSearchQuery(searchInput)
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [searchInput])
+
   const filteredExercises = useMemo(() => {
-    return allExercises.filter(ex => {
-      const matchesSearch = !searchQuery || 
-        ex.name.toLowerCase().includes(searchQuery.toLowerCase())
-      
-      const bodyPartMatch = selectedBodyPart === 'all' || 
-        ex.bodyPart.toLowerCase() === selectedBodyPart.toLowerCase() ||
-        (selectedBodyPart === 'back' && ex.bodyPart === 'Costas') ||
-        (selectedBodyPart === 'chest' && ex.bodyPart === 'Peito') ||
-        (selectedBodyPart === 'shoulders' && ex.bodyPart === 'Ombros') ||
-        (selectedBodyPart === 'upper arms' && (ex.bodyPart === 'Braços Superiores' || ex.bodyPart === 'Braços')) ||
-        (selectedBodyPart === 'upper legs' && (ex.bodyPart === 'Coxas Superiores' || ex.bodyPart === 'Coxas' || ex.bodyPart === 'Perna')) ||
-        (selectedBodyPart === 'lower legs' && (ex.bodyPart === 'Inferiores' || ex.bodyPart === 'Pernas Inferiores')) ||
-        (selectedBodyPart === 'waist' && ex.bodyPart === 'Cintura') ||
-        (selectedBodyPart === 'cardio' && ex.bodyPart === 'Cardio') ||
-        (selectedBodyPart === 'antebraco' && ex.bodyPart === 'Antebraço') ||
-        (selectedBodyPart === 'biceps' && ex.bodyPart === 'Bíceps') ||
-        (selectedBodyPart === 'pernas' && ex.bodyPart === 'Pernas') ||
-        (selectedBodyPart === 'costas' && ex.bodyPart === 'Costas') ||
-        (selectedBodyPart === 'calistenia' && ex.bodyPart === 'Calistenia') ||
-        (selectedBodyPart === 'crossfit' && ex.bodyPart === 'Crossfit')
-      
-      const targetMatch = selectedMuscle === 'all' || 
-        ex.target.toLowerCase().includes(selectedMuscle.toLowerCase()) ||
-        (selectedMuscle === 'forearms' && ex.target === 'Antebraço') ||
-        (selectedMuscle === 'biceps' && ex.target === 'Bíceps') ||
-        (selectedMuscle === 'antebraco' && ex.target === 'Antebraço') ||
-        (selectedMuscle === 'costas' && ex.target === 'Costas') ||
-        (selectedMuscle === 'pernas' && ex.target === 'Pernas') ||
-        (selectedMuscle === 'calistenia' && ex.target === 'Calistenia') ||
-        (selectedMuscle === 'cardio' && ex.target === 'Cardio') ||
-        (selectedMuscle === 'crossfit' && ex.target === 'Crossfit')
-      
-      return matchesSearch && bodyPartMatch && targetMatch
-    })
-  }, [allExercises, searchQuery, selectedBodyPart, selectedMuscle])
+    const bySearch = searchQuery
+      ? allExercises.filter(ex =>
+          normalizeText(ex.name).includes(normalizeText(searchQuery))
+        )
+      : allExercises
+
+    const byGrupo = selectedGrupo === 'todos'
+      ? bySearch
+      : bySearch.filter(ex =>
+          normalizeGrupo(ex.bodyPart) === selectedGrupo ||
+          normalizeGrupo(ex.target) === selectedGrupo
+        )
+
+    const sorted = [...byGrupo].sort((a, b) =>
+      sortBy === 'az'
+        ? a.name.localeCompare(b.name)
+        : b.name.localeCompare(a.name)
+    )
+
+    return sorted
+  }, [allExercises, searchQuery, selectedGrupo, sortBy])
 
   const paginatedExercises = useMemo(() => {
     return filteredExercises.slice(0, page * LIMIT)
@@ -94,7 +91,7 @@ export default function ExercisesPage() {
 
   useEffect(() => {
     setPage(1)
-  }, [searchQuery, selectedBodyPart, selectedMuscle])
+  }, [searchQuery, selectedGrupo, sortBy])
 
   const loadMore = () => {
     if (hasMore) {
@@ -105,7 +102,7 @@ export default function ExercisesPage() {
   useEffect(() => {
     const handleScroll = () => {
       if (
-        window.innerHeight + document.documentElement.scrollTop >= 
+        window.innerHeight + document.documentElement.scrollTop >=
         document.documentElement.offsetHeight - 200
       ) {
         loadMore()
@@ -116,9 +113,10 @@ export default function ExercisesPage() {
   }, [hasMore])
 
   const clearFilters = () => {
+    setSearchInput('')
     setSearchQuery('')
-    setSelectedBodyPart('all')
-    setSelectedMuscle('all')
+    setSelectedGrupo('todos')
+    setSortBy('az')
   }
 
   return (
@@ -143,34 +141,39 @@ export default function ExercisesPage() {
             <Search size={20} className="search-icon" />
             <input
               className="search-input"
-              placeholder="Buscar..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Buscar exercício..."
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
             />
-            {searchQuery && (
-              <button className="search-clear" onClick={() => setSearchQuery('')}>
+            {searchInput && (
+              <button className="search-clear" onClick={() => setSearchInput('')}>
                 <X size={14} />
               </button>
             )}
           </div>
 
           <div className="exercises-filters">
-            <select className="filter-select" value={selectedBodyPart} onChange={(e) => setSelectedBodyPart(e.target.value)}>
-              <option value="all">Todas áreas</option>
-              {bodyParts.map(p => (
-                <option key={p.value} value={p.value}>{p.label}</option>
+            <select
+              className="filter-select"
+              value={selectedGrupo}
+              onChange={(e) => setSelectedGrupo(e.target.value)}
+            >
+              {gruposOptions.map(g => (
+                <option key={g.value} value={g.value}>{g.label}</option>
               ))}
             </select>
 
-            <select className="filter-select" value={selectedMuscle} onChange={(e) => setSelectedMuscle(e.target.value)}>
-              <option value="all">Todos músculos</option>
-              {muscleGroups.map(m => (
-                <option key={m.value} value={m.value}>{m.label}</option>
-              ))}
+            <select
+              className="filter-select"
+              value={sortBy}
+              onChange={(e) => setSortBy(e.target.value as 'az' | 'za')}
+            >
+              <option value="az">A → Z</option>
+              <option value="za">Z → A</option>
             </select>
 
             <button onClick={clearFilters}>
-              Limpar
+              <X size={14} /> Limpar
             </button>
           </div>
         </div>
@@ -179,6 +182,7 @@ export default function ExercisesPage() {
           exercises={paginatedExercises}
           loading={false}
           error={null}
+          searchTerm={searchQuery}
           onExerciseClick={(exercise) => navigate(`/exercicio/${encodeURIComponent(exercise.id)}`)}
         />
 

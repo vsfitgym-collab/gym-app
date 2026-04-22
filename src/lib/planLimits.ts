@@ -1,5 +1,6 @@
 import { supabase } from './supabase'
 import { planLimits } from './subscriptionService'
+import { isPremium as checkPremium } from './planUtils'
 import type { Plan, PlanLimits } from '../types'
 
 export const PLAN_LIMITS = {
@@ -112,7 +113,7 @@ export const getUserPlanInfo = async (userId: string): Promise<PlanInfo> => {
     const plan = data.plan as Plan
     const isActive = data.status === 'active'
     const isTrialing = data.status === 'trialing'
-    const isPremium = (plan === 'basic' || plan === 'premium') && isActive
+    const isPremium = checkPremium(plan) && isActive
     const isTrialingPremium = plan === 'free' && isTrialing
 
     return {
@@ -121,9 +122,9 @@ export const getUserPlanInfo = async (userId: string): Promise<PlanInfo> => {
       limits: planLimits[plan],
       canCreateWorkout: plan !== 'free' || isPremium || isTrialingPremium,
       canAddExercise: planLimits[plan].maxExercisesPerWorkout > 5,
-      canViewFinance: plan === 'premium',
-      canViewAnalytics: plan === 'premium' || plan === 'basic',
-      canExport: plan === 'premium',
+canViewFinance: plan === 'premium' || plan === 'pro',
+    canViewAnalytics: plan === 'premium' || plan === 'pro' || plan === 'basic',
+    canExport: plan === 'premium' || plan === 'pro',
     }
   } catch {
     return {

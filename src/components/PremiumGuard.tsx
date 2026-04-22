@@ -2,6 +2,7 @@ import React, { memo } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Lock, Crown, Sparkles, ArrowRight } from 'lucide-react'
 import { useSubscription } from '../hooks/useSubscription'
+import { isPremium, isBasic, isPlanActive, isFree } from '../lib/planUtils'
 import './PremiumGuard.css'
 
 interface PremiumGuardProps {
@@ -18,7 +19,7 @@ export const PremiumGuard = memo(function PremiumGuard({
   requirePlan = 'premium',
 }: PremiumGuardProps) {
   const navigate = useNavigate()
-  const { plan, isPremium, loading } = useSubscription()
+  const { plan, isPremium: hookIsPremium, isBasic: hookIsBasic, subscription, loading } = useSubscription()
 
   if (loading) {
     return (
@@ -29,9 +30,15 @@ export const PremiumGuard = memo(function PremiumGuard({
     )
   }
 
-  const meetsRequirement = requirePlan === 'basic'
-    ? (plan === 'basic' || plan === 'premium')
-    : isPremium
+  const hasPlan = !!plan && plan !== 'free'
+  const expiresAt = subscription?.end_date ?? null
+  const isActive = hasPlan ? isPlanActive(expiresAt) : true
+  
+  const meetsRequirement = hasPlan && (
+    requirePlan === 'basic'
+      ? (hookIsBasic || hookIsPremium) && isActive
+      : hookIsPremium && isActive
+  )
 
   if (!meetsRequirement) {
     if (fallback) return <>{fallback}</>
@@ -57,7 +64,7 @@ export const PremiumGuard = memo(function PremiumGuard({
             {feature} está disponível apenas no plano <strong>{requirePlan === 'basic' ? 'Básico' : 'Premium'}</strong>.
           </p>
 
-          {plan === 'free' && (
+          {isFree(plan) && (
             <div className="guard-current-plan">
               <span>Seu plano atual:</span>
               <strong>Free</strong>

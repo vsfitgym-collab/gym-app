@@ -1,4 +1,5 @@
 import { supabase } from './supabase'
+import { isPremium as checkPremium, isPlanActive } from './planUtils'
 import type { Plan, Subscription, SubscriptionStatus, PlanLimits } from '../types'
 
 export interface SubscriptionWithProfile extends Subscription {
@@ -78,12 +79,13 @@ export const isPremium = async (userId: string): Promise<boolean> => {
   if (!sub) return false
   
   if (sub.status === 'active' || sub.status === 'ativa') {
-    const p = sub.plan.toLowerCase()
-    if (p.includes('premium') || p.includes('pro') || p.includes('basic')) return true
+    const isActive = isPlanActive(sub.end_date)
+    if (!isActive) return false
+    return checkPremium(sub.plan)
   }
   
   if (sub.status === 'trial' && sub.trial_ends_at) {
-    return new Date(sub.trial_ends_at) > new Date()
+    return isPlanActive(sub.trial_ends_at)
   }
   
   return false
