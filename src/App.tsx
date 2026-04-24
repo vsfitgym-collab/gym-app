@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useAuth } from './context/AuthContext'
+import { PlanProvider } from './context/PlanContext'
 import LayoutAluno from './components/LayoutAluno'
 import LayoutPersonal from './components/LayoutPersonal'
 import LoginPage from './pages/auth/LoginPage'
@@ -32,6 +33,7 @@ const ConquistasAlunoPage = lazy(() => import('./pages/ConquistasAlunoPage'))
 const CriarConquistaPage = lazy(() => import('./pages/CriarConquistaPage'))
 const ExercicioDetalhe = lazy(() => import('./pages/ExercicioDetalhe'))
 const AlunoDetalhe = lazy(() => import('./pages/AlunoDetalhe'))
+const ProfilePage = lazy(() => import('./pages/ProfilePage'))
 
 function LoadingScreen() {
   return (
@@ -102,6 +104,7 @@ function AppRoutes() {
           <Route path="conquistas/aluno/:id" element={role === 'personal' ? <ConquistasAlunoPage /> : <Navigate to="/" replace />} />
           <Route path="conquistas/criar" element={role === 'personal' ? <CriarConquistaPage /> : <Navigate to="/" replace />} />
           <Route path="chat" element={<ChatPage />} />
+          <Route path="perfil" element={<ProfilePage />} />
         </Route>
         
         <Route path="*" element={<Navigate to="/" replace />} />
@@ -113,9 +116,11 @@ function AppRoutes() {
 export default function App() {
   return (
     <BrowserRouter>
-      <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0f' }}>
-        <AppRoutes />
-      </div>
+      <PlanProvider>
+        <div style={{ minHeight: '100vh', backgroundColor: '#0a0a0f' }}>
+          <AppRoutes />
+        </div>
+      </PlanProvider>
     </BrowserRouter>
   )
 }

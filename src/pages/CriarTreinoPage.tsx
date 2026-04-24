@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useAuth } from '../context/AuthContext'
 import { useSubscription } from '../hooks/useSubscription'
@@ -22,10 +22,7 @@ import {
   Clock,
   Layers
 } from 'lucide-react'
-import type { Exercise } from '../lib/exerciseTranslations'
-import { translateBodyPart, translateTarget, translateEquipment } from '../lib/exerciseTranslations'
-import { exercises as localExercises } from '../data/exercises'
-import { getGifUrl } from '../lib/exerciseUtils'
+import { exerciseLibrary as localExercises, type Exercise } from '../data/exercises'
 import './CriarTreino.css'
 
 interface ExercicioSelecionado {
@@ -86,6 +83,24 @@ export default function CriarTreinoPage() {
   const [loadingExercises, setLoadingExercises] = useState(false)
   const [selectedFilter, setSelectedFilter] = useState('all')
   const [loading, setLoading] = useState(isEditMode)
+
+  // Workout type toggle (FREE vs CUSTOM)
+  const [workoutType, setWorkoutType] = useState<'free' | 'custom'>('custom')
+  const [selectedAluno, setSelectedAluno] = useState<string>('')
+  const [alunosList, setAlunosList] = useState<{ id: string; name: string; email: string }[]>([])
+  const [selectedDay, setSelectedDay] = useState<number>(1) // 1=Monday default
+
+  useEffect(() => {
+    if (role === 'personal') {
+      loadAlunos()
+    }
+  }, [role])
+
+  const loadAlunos = async () => {
+    const { data } = await supabase
+      .from('profiles').select('id, name, email').eq('role', 'aluno')
+    if (data) setAlunosList(data)
+  }
 
   const getComputedDuration = () => {
     if (treino.exercises.length === 0) return 0
@@ -172,11 +187,10 @@ export default function CriarTreinoPage() {
       const mappedExercises: Exercise[] = localExercises.map(local => ({
         id: local.id,
         name: local.name,
-        bodyPart: translateBodyPart(local.bodyPart),
-        target: translateTarget(local.target),
-        equipment: translateEquipment(local.equipment),
-        gif: local.gif,
-        gifUrl: getGifUrl(local),
+        target: local.target,
+        equipment: local.equipment,
+        gifUrl: local.gifUrl || local.thumbnail || '',
+        thumbnail: local.thumbnail || '',
         instructions: []
       }))
       setApiExercises(mappedExercises)
@@ -187,11 +201,13 @@ export default function CriarTreinoPage() {
     }
   }
 
-  const filteredExercises = apiExercises.filter(ex => {
-    const matchesSearch = ex.name.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesFilter = selectedFilter === 'all' || ex.target === selectedFilter || ex.bodyPart === selectedFilter
-    return matchesSearch && matchesFilter
-  })
+  const filteredExercises = useMemo(() => {
+    return apiExercises.filter(ex => {
+      const matchesSearch = ex.name.toLowerCase().includes(searchQuery.toLowerCase())
+      const matchesFilter = selectedFilter === 'all' || ex.target === selectedFilter
+      return matchesSearch && matchesFilter
+    })
+  }, [apiExercises, searchQuery, selectedFilter])
 
   const selecionarExercicio = (exercise: Exercise) => {
     if (!isPremium && treino.exercises.length >= limits.maxExercisesPerWorkout) {
@@ -199,31 +215,12 @@ export default function CriarTreinoPage() {
       return
     }
 
-    const grupoMap: Record<string, string> = {
-      'pectorals': 'Peito',
-      'lats': 'Costas',
-      'upper back': 'Costas',
-      'spine': 'Costas',
-      'quads': 'Perna',
-      'glutes': 'Perna',
-      'hamstrings': 'Perna',
-      'calves': 'Perna',
-      'abductors': 'Perna',
-      'adductors': 'Perna',
-      'delts': 'Ombro',
-      'biceps': 'Bíceps',
-      'triceps': 'Tríceps',
-      'forearms': 'Bíceps',
-      'abs': 'Abdomen',
-      'cardiovascular system': 'Cardio',
-    }
-
     setTreino(prev => ({
       ...prev,
       exercises: [...prev.exercises, {
         exerciseId: exercise.id,
         nome: exercise.name,
-        grupoMuscular: grupoMap[exercise.target] || 'Perna',
+        grupoMuscular: exercise.target || 'Outros',
         series: 3,
         repeticoes: '10-12',
         descanso: 60,
@@ -351,12 +348,22 @@ export default function CriarTreinoPage() {
             level: treino.level,
             duration_minutes: treino.is_custom_duration ? (treino.duration_minutes || getComputedDuration()) : null,
             is_custom_duration: treino.is_custom_duration,
-            created_by: user?.id
+            created_by: user?.id,
+            workout_type: workoutType,
+            assigned_to: workoutType === 'custom' && selectedAluno ? selectedAluno : null,
           })
           .select()
           .single()
 
         if (treinoError) throw treinoError
+
+        // If FREE workout, also create schedule entry
+        if (workoutType === 'free' && treinoData) {
+          await supabase.from('free_workout_schedule').upsert({
+            workout_id: treinoData.id,
+            day_of_week: selectedDay,
+          }, { onConflict: 'day_of_week' })
+        }
 
         for (let i = 0; i < treino.exercises.length; i++) {
           const ex = treino.exercises[i]
@@ -432,6 +439,74 @@ export default function CriarTreinoPage() {
       </div>
 
       <div className="section-card">
+        {/* Workout Type Toggle (only for personal, only on create) */}
+        {!isEditMode && (
+          <div className="mb-6">
+            <label className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-2 block">Tipo de Treino</label>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setWorkoutType('free')}
+                className={`flex-1 py-3 px-4 rounded-xl font-semibold text-sm border transition-all ${
+                  workoutType === 'free'
+                    ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                    : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                🆓 Padrão (FREE)
+                <p className="text-[10px] mt-1 font-normal opacity-70">Compartilhado com todos os alunos FREE</p>
+              </button>
+              <button
+                onClick={() => setWorkoutType('custom')}
+                className={`flex-1 py-3 px-4 rounded-xl font-semibold text-sm border transition-all ${
+                  workoutType === 'custom'
+                    ? 'bg-purple-500/20 border-purple-500/50 text-purple-300'
+                    : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
+                }`}
+              >
+                🎯 Personalizado
+                <p className="text-[10px] mt-1 font-normal opacity-70">Atribuído a um aluno específico</p>
+              </button>
+            </div>
+
+            {/* Day of week selector for FREE */}
+            {workoutType === 'free' && (
+              <div className="mt-3">
+                <label className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-2 block">Dia da Semana</label>
+                <div className="flex gap-2">
+                  {[{v:1,l:'SEG'},{v:3,l:'QUA'},{v:5,l:'SEX'}].map(d => (
+                    <button
+                      key={d.v}
+                      onClick={() => setSelectedDay(d.v)}
+                      className={`flex-1 py-2.5 rounded-xl text-sm font-bold border transition-all ${
+                        selectedDay === d.v
+                          ? 'bg-emerald-500/20 border-emerald-500/50 text-emerald-300'
+                          : 'bg-white/5 border-white/10 text-slate-400 hover:bg-white/10'
+                      }`}
+                    >{d.l}</button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Student selector for CUSTOM */}
+            {workoutType === 'custom' && (
+              <div className="mt-3">
+                <label className="text-xs font-semibold uppercase tracking-wider text-white/50 mb-2 block">Aluno</label>
+                <select
+                  className="w-full bg-white/5 border border-white/10 rounded-xl p-3 text-white focus:outline-none focus:border-purple-500 transition-colors"
+                  value={selectedAluno}
+                  onChange={e => setSelectedAluno(e.target.value)}
+                >
+                  <option value="">Selecione um aluno...</option>
+                  {alunosList.map(a => (
+                    <option key={a.id} value={a.id}>{a.name} ({a.email})</option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="section-label">
           <Dumbbell size={18} />
           <span>Informações Principais</span>
@@ -630,104 +705,132 @@ export default function CriarTreinoPage() {
       </div>
 
       {showSelector && (
-        <div className="exercise-selector-overlay" onClick={() => setShowSelector(false)}>
-          <div className="exercise-selector" onClick={e => e.stopPropagation()}>
-            <div className="selector-header">
-              <h3>Selecionar Exercício</h3>
-              <button className="btn-fechar-selector" onClick={() => setShowSelector(false)}>
-                <X size={20} />
+        <div 
+          className="fixed inset-0 z-[1000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 sm:p-6" 
+          onClick={() => setShowSelector(false)}
+        >
+          <div 
+            className="w-full max-w-2xl bg-gradient-to-b from-zinc-900 to-zinc-950 border border-white/10 rounded-2xl shadow-2xl overflow-hidden flex flex-col h-[85vh] sm:h-[75vh]" 
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 sm:p-6 border-b border-white/5">
+              <h3 className="text-lg font-semibold text-white">Selecionar Exercício</h3>
+              <button 
+                className="w-8 h-8 flex items-center justify-center rounded-lg bg-white/5 border border-white/5 text-zinc-400 hover:bg-white/10 hover:text-white transition-all"
+                onClick={() => setShowSelector(false)}
+              >
+                <X size={18} />
               </button>
             </div>
 
-            <div className="selector-search">
-              <Search size={16} className="search-icon" />
-              <input
-                type="text"
-                placeholder="Buscar exercício..."
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-              />
+            {/* Search */}
+            <div className="px-5 sm:px-6 pt-5 pb-3">
+              <div className="relative">
+                <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar exercício..."
+                  className="w-full h-11 pl-11 pr-4 bg-zinc-800/60 border border-white/10 rounded-xl text-zinc-200 placeholder-zinc-500 focus:outline-none focus:ring-2 focus:ring-purple-500/40 transition-all"
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                />
+              </div>
             </div>
 
-            <div className="selector-filters">
-              <button
-                className={`filter-chip ${selectedFilter === 'all' ? 'active' : ''}`}
-                onClick={() => setSelectedFilter('all')}
-              >
-                Todos
-              </button>
-              <button
-                className={`filter-chip ${selectedFilter === 'pectorals' ? 'active' : ''}`}
-                onClick={() => setSelectedFilter('pectorals')}
-              >
-                Peito
-              </button>
-              <button
-                className={`filter-chip ${selectedFilter === 'lats' || selectedFilter === 'upper back' ? 'active' : ''}`}
-                onClick={() => setSelectedFilter('lats')}
-              >
-                Costas
-              </button>
-              <button
-                className={`filter-chip ${selectedFilter === 'quads' || selectedFilter === 'glutes' ? 'active' : ''}`}
-                onClick={() => setSelectedFilter('quads')}
-              >
-                Perna
-              </button>
-              <button
-                className={`filter-chip ${selectedFilter === 'delts' ? 'active' : ''}`}
-                onClick={() => setSelectedFilter('delts')}
-              >
-                Ombro
-              </button>
-              <button
-                className={`filter-chip ${selectedFilter === 'biceps' ? 'active' : ''}`}
-                onClick={() => setSelectedFilter('biceps')}
-              >
-                Bíceps
-              </button>
-              <button
-                className={`filter-chip ${selectedFilter === 'triceps' ? 'active' : ''}`}
-                onClick={() => setSelectedFilter('triceps')}
-              >
-                Tríceps
-              </button>
-              <button
-                className={`filter-chip ${selectedFilter === 'abs' ? 'active' : ''}`}
-                onClick={() => setSelectedFilter('abs')}
-              >
-                Abdômen
-              </button>
+            {/* Filters */}
+            <div className="px-5 sm:px-6 pb-4 overflow-x-auto custom-scrollbar-hide">
+              <div className="flex gap-2 min-w-max pb-1">
+                {[
+                  { id: 'all', label: 'Todos' },
+                  { id: 'Peito', label: 'Peito' },
+                  { id: 'Costas', label: 'Costas' },
+                  { id: 'Perna', label: 'Perna' },
+                  { id: 'Ombro', label: 'Ombro' },
+                  { id: 'Bíceps', label: 'Bíceps' },
+                  { id: 'Tríceps', label: 'Tríceps' },
+                  { id: 'Funcional', label: 'Funcional' },
+                ].map(filter => (
+                  <button
+                    key={filter.id}
+                    className={`px-3 py-1.5 rounded-full text-sm font-medium border transition-colors ${
+                      selectedFilter === filter.id 
+                        ? 'bg-purple-600 text-white border-purple-500/50' 
+                        : 'bg-zinc-800 text-zinc-300 border-white/5 hover:bg-zinc-700/80 hover:text-zinc-100'
+                    }`}
+                    onClick={() => setSelectedFilter(filter.id)}
+                  >
+                    {filter.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
-            <div className="selector-list">
+            {/* List */}
+            <div className="flex-1 overflow-y-auto px-5 sm:px-6 pb-6 custom-scrollbar">
               {loadingExercises ? (
-                <div className="selector-loading">
-                  <div className="spinner" />
-                  <span>Carregando exercícios...</span>
+                <div className="space-y-3">
+                  {[...Array(5)].map((_, i) => (
+                    <div key={i} className="animate-pulse bg-zinc-800/40 border border-white/5 rounded-xl h-[72px] w-full" />
+                  ))}
                 </div>
               ) : filteredExercises.length === 0 ? (
-                <div className="selector-empty">
-                  <Search size={32} />
-                  <p>Nenhum exercício encontrado</p>
+                <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-zinc-800/50 flex items-center justify-center border border-white/5 text-zinc-500">
+                    <Search size={32} />
+                  </div>
+                  <div>
+                    <p className="text-zinc-300 font-medium">Nenhum exercício encontrado</p>
+                    <p className="text-sm text-zinc-500">Tente ajustar seus filtros de busca.</p>
+                  </div>
                 </div>
               ) : (
-                filteredExercises.map((exercise) => (
-                  <button
-                    key={exercise.id}
-                    className="selector-item"
-                    onClick={() => selecionarExercicio(exercise)}
-                  >
-                    <div className="selector-item-info">
-                      <span className="selector-item-name">{exercise.name}</span>
-                      <div className="selector-item-tags">
-                        <span className="tag-muscle">{translateTarget(exercise.target)}</span>
-                        <span className="tag-equipment">{translateEquipment(exercise.equipment)}</span>
+                <div className="grid grid-cols-1 gap-3">
+                  {filteredExercises.map((exercise) => (
+                    <button
+                      key={exercise.id}
+                      className="group flex items-center gap-4 p-4 bg-zinc-900/60 hover:bg-zinc-800/80 border border-white/5 rounded-xl transition-all duration-200 hover:scale-[1.01] hover:border-purple-500/30 text-left w-full"
+                      onClick={() => selecionarExercicio(exercise)}
+                    >
+                      <div className="w-16 h-16 rounded-lg overflow-hidden shrink-0 bg-zinc-800 flex items-center justify-center border border-white/10">
+                        {exercise.gifUrl ? (
+                          <video 
+                            src={exercise.gifUrl} 
+                            muted 
+                            loop 
+                            playsInline 
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                            onMouseEnter={e => e.currentTarget.play()}
+                            onMouseLeave={e => {e.currentTarget.pause(); e.currentTarget.currentTime = 0;}}
+                          />
+                        ) : exercise.thumbnail ? (
+                          <img 
+                            src={exercise.thumbnail} 
+                            alt={exercise.name} 
+                            className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500" 
+                          />
+                        ) : (
+                          <Dumbbell size={24} className="text-zinc-600" />
+                        )}
                       </div>
-                    </div>
-                    <ChevronDown size={16} className="selector-arrow" />
-                  </button>
-                ))
+                      
+                      <div className="flex flex-col gap-1.5 flex-1">
+                        <span className="text-white font-medium group-hover:text-purple-300 transition-colors line-clamp-2">
+                          {exercise.name}
+                        </span>
+                        <div className="flex flex-wrap gap-2">
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                            {exercise.target}
+                          </span>
+                          <span className="text-[11px] font-medium px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 border border-amber-500/20">
+                            {exercise.equipment}
+                          </span>
+                        </div>
+                      </div>
+                      <ChevronDown size={18} className="text-zinc-600 group-hover:text-purple-400 -rotate-90 transition-colors shrink-0" />
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           </div>

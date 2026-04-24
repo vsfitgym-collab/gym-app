@@ -19,6 +19,7 @@ import {
   Target,
   BarChart2,
   UserPlus,
+  FileText
 } from 'lucide-react'
 import './DashboardPersonal.css'
 
@@ -61,6 +62,7 @@ interface KpiData {
   trainedToday: number
   trainedThisWeek: number
   activePercent: number
+  pendingProfiles: number
 }
 
 type FilterTab = 'all' | 'ativo' | 'inativo' | 'atencao'
@@ -178,7 +180,7 @@ export default function DashboardPersonalPage() {
 
   const [kpis, setKpis] = useState<KpiData>({
     totalStudents: 0, activeStudents: 0, totalWorkouts: 0,
-    trainedToday: 0, trainedThisWeek: 0, activePercent: 0,
+    trainedToday: 0, trainedThisWeek: 0, activePercent: 0, pendingProfiles: 0
   })
   const [students, setStudents] = useState<Student[]>([])
   const [workouts, setWorkouts] = useState<WorkoutItem[]>([])
@@ -282,7 +284,13 @@ export default function DashboardPersonalPage() {
       .from('workouts')
       .select('*', { count: 'exact', head: true })
       .eq('created_by', user.id)
-    setKpis(prev => ({ ...prev, totalWorkouts: total ?? wData.length }))
+      
+    const { count: pendingProfiles } = await supabase
+      .from('student_profiles')
+      .select('*', { count: 'exact', head: true })
+      .eq('status', 'awaiting_program')
+
+    setKpis(prev => ({ ...prev, totalWorkouts: total ?? wData.length, pendingProfiles: pendingProfiles ?? 0 }))
   }, [user])
 
   const loadActivity = useCallback(async () => {
@@ -388,13 +396,15 @@ export default function DashboardPersonalPage() {
           delay={0}
         />
         <KpiCard
-          icon={<Dumbbell size={21} />}
-          label="Treinos criados"
-          value={kpis.totalWorkouts}
-          iconColor="#818cf8"
-          iconBg="rgba(99,102,241,0.12)"
-          glowColor="rgba(99,102,241,0.15)"
-          accentColor="rgba(99,102,241,0.3)"
+          icon={<FileText size={21} />}
+          label="Fichas pendentes"
+          value={kpis.pendingProfiles}
+          badge={kpis.pendingProfiles > 0 ? 'Criar treino!' : 'Tudo certo'}
+          badgeType={kpis.pendingProfiles > 0 ? 'warn' : 'neutral'}
+          iconColor="#f43f5e"
+          iconBg="rgba(244,63,94,0.12)"
+          glowColor="rgba(244,63,94,0.15)"
+          accentColor="rgba(244,63,94,0.3)"
           delay={60}
         />
         <KpiCard

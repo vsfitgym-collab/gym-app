@@ -19,7 +19,7 @@ interface PendingPayment {
   user_id: string
   plan: string
   amount: number
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'pending_payment' | 'pending_confirmation' | 'approved' | 'rejected'
   pix_key: string
   created_at: string
   reviewed_at: string | null
@@ -34,7 +34,7 @@ export default function PendingPaymentsPage() {
   const [loading, setLoading] = useState(true)
   const [processing, setProcessing] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
-  const [filter, setFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending')
+  const [filter, setFilter] = useState<'all' | 'pending_confirmation' | 'approved' | 'rejected'>('pending_confirmation')
   const [selectedPayment, setSelectedPayment] = useState<PendingPayment | null>(null)
 
   useEffect(() => {
@@ -95,6 +95,22 @@ export default function PendingPaymentsPage() {
     setProcessing(paymentId)
 
     try {
+      // Map plan name to plan key
+      const planKey = plan.toLowerCase().includes('essencial') || plan.toLowerCase().includes('basic') ? 'basic' :
+                    plan.toLowerCase().includes('personal') || plan.toLowerCase().includes('pro') ? 'pro' :
+                    plan.toLowerCase().includes('elite') || plan.toLowerCase().includes('premium') ? 'premium' : 'basic'
+
+      // Aprovar via função segura (atualiza profile + subscriptions)
+      const { error } = await supabase.rpc('confirm_payment', {
+        p_target_user_id: userId,
+        p_plan_type: planKey
+      })
+
+      if (error) {
+        alert('Erro ao confirmar: ' + error.message)
+        return
+      }
+
       // Update payment status
       await supabase
         .from('pending_payments')
@@ -104,22 +120,6 @@ export default function PendingPaymentsPage() {
           reviewed_by: user.id,
         })
         .eq('id', paymentId)
-
-      // Activate subscription
-      const now = new Date()
-      const endDate = new Date(now)
-      endDate.setMonth(endDate.getMonth() + 1)
-
-      await supabase.from('subscriptions').upsert({
-        user_id: userId,
-        plan, // Salvando o nome exato (ex: "Plano Pro")
-        status: 'active',
-        start_date: now.toISOString(),
-        end_date: endDate.toISOString(),
-        updated_at: now.toISOString(),
-      }, {
-        onConflict: 'user_id',
-      })
 
       setPayments(prev => prev.map(p =>
         p.id === paymentId ? { ...p, status: 'approved', reviewed_at: new Date().toISOString() } : p
@@ -160,11 +160,13 @@ export default function PendingPaymentsPage() {
   const filteredPayments = payments.filter(p => {
     const matchesSearch = p.user_name.toLowerCase().includes(searchQuery.toLowerCase()) ||
                           p.user_email.toLowerCase().includes(searchQuery.toLowerCase())
-    const matchesFilter = filter === 'all' || p.status === filter
-    return matchesSearch && matchesFilter
+    const matchFilter = filter === 'all' || 
+                        p.status === filter ||
+                        (filter === 'pending_confirmation' && ['pending_confirmation', 'pending'].includes(p.status))
+    return matchesSearch && matchFilter
   })
 
-  const pendingCount = payments.filter(p => p.status === 'pending').length
+  const pendingCount = payments.filter(p => ['pending_confirmation', 'pending'].includes(p.status)).length
 
   if (loading) {
     return (
@@ -203,13 +205,13 @@ export default function PendingPaymentsPage() {
           />
         </div>
         <div className="pending-filter-btns">
-          {(['pending', 'approved', 'rejected', 'all'] as const).map(f => (
+          {(['pending_confirmation', 'approved', 'rejected', 'all'] as const).map(f => (
             <button
               key={f}
               className={`filter-btn ${filter === f ? 'active' : ''}`}
               onClick={() => setFilter(f)}
             >
-              {f === 'pending' && '⏳ Pendentes'}
+              {f === 'pending_confirmation' && '⏳ Pendentes'}
               {f === 'approved' && '✅ Aprovados'}
               {f === 'rejected' && '❌ Rejeitados'}
               {f === 'all' && '📋 Todos'}
@@ -238,7 +240,8 @@ export default function PendingPaymentsPage() {
                   </div>
                 </div>
                 <div className={`pending-status-badge ${payment.status}`}>
-                  {payment.status === 'pending' && <><Clock size={12} /> Pendente</>}
+                  {['pending_confirmation', 'pending'].includes(payment.status) && <><Clock size={12} /> Avaliação TBD</>}
+                  {payment.status === 'pending_payment' && <><Clock size={12} /> Aguardando Aluno</>}
                   {payment.status === 'approved' && <><CheckCircle2 size={12} /> Aprovado</>}
                   {payment.status === 'rejected' && <><XCircle size={12} /> Rejeitado</>}
                 </div>
@@ -267,7 +270,7 @@ export default function PendingPaymentsPage() {
                   <Eye size={14} />
                   Ver detalhes
                 </button>
-                {payment.status === 'pending' && (
+                {['pending_confirmation', 'pending'].includes(payment.status) && (
                   <>
                     <button
                       className="btn-approve"
@@ -344,14 +347,15 @@ export default function PendingPaymentsPage() {
                 <div className="detail-row">
                   <span>Status:</span>
                   <span className={`detail-status ${selectedPayment.status}`}>
-                    {selectedPayment.status === 'pending' && '⏳ Pendente'}
+                    {['pending_confirmation', 'pending'].includes(selectedPayment.status) && '⏳ Confirmação Pendente'}
+                    {selectedPayment.status === 'pending_payment' && '⏳ Aluno não confirmou PGTO'}
                     {selectedPayment.status === 'approved' && '✅ Aprovado'}
                     {selectedPayment.status === 'rejected' && '❌ Rejeitado'}
                   </span>
                 </div>
               </div>
             </div>
-            {selectedPayment.status === 'pending' && (
+            {['pending_confirmation', 'pending'].includes(selectedPayment.status) && (
               <div className="detail-actions">
                 <button
                   className="btn-approve-full"

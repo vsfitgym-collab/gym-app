@@ -89,7 +89,20 @@ export const checkExerciseLimit = async (
   }
 }
 
-export const getUserPlanInfo = async (userId: string): Promise<PlanInfo> => {
+export const getUserPlanInfo = async (userId: string, userRole?: string): Promise<PlanInfo> => {
+  if (userRole === 'personal') {
+    return {
+      plan: 'premium',
+      isPremium: true,
+      limits: planLimits.premium,
+      canCreateWorkout: true,
+      canAddExercise: true,
+      canViewFinance: true,
+      canViewAnalytics: true,
+      canExport: true,
+    }
+  }
+
   try {
     const { data, error } = await supabase
       .from('subscriptions')
@@ -122,9 +135,9 @@ export const getUserPlanInfo = async (userId: string): Promise<PlanInfo> => {
       limits: planLimits[plan],
       canCreateWorkout: plan !== 'free' || isPremium || isTrialingPremium,
       canAddExercise: planLimits[plan].maxExercisesPerWorkout > 5,
-canViewFinance: plan === 'premium' || plan === 'pro',
-    canViewAnalytics: plan === 'premium' || plan === 'pro' || plan === 'basic',
-    canExport: plan === 'premium' || plan === 'pro',
+      canViewFinance: plan === 'premium' || plan === 'pro',
+      canViewAnalytics: plan === 'premium' || plan === 'pro' || plan === 'basic',
+      canExport: plan === 'premium' || plan === 'pro',
     }
   } catch {
     return {
@@ -165,8 +178,13 @@ export const showLimitToast = (message: string) => {
 
 export const canUserAccessFeature = async (
   userId: string,
-  feature: 'workout' | 'exercise' | 'finance' | 'analytics' | 'export'
+  feature: 'workout' | 'exercise' | 'finance' | 'analytics' | 'export',
+  userRole?: string
 ): Promise<boolean> => {
+  if (userRole === 'personal') {
+    return true
+  }
+  
   const info = await getUserPlanInfo(userId)
   
   switch (feature) {

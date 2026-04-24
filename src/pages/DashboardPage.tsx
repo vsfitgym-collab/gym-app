@@ -24,6 +24,8 @@ import { registerWorkoutPresence, checkTodayPresence, getPresenceStats } from '.
 import { useState, useEffect } from 'react'
 import CardBloqueio from '../components/CardBloqueio'
 import ProtectedFeature from '../components/ProtectedFeature'
+import { normalizePlanKey, getWorkoutSystem } from '../lib/permissions'
+import { useStudentProfile } from '../hooks/useStudentProfile'
 import './Dashboard.css'
 
 export const weeklyProgress = [
@@ -114,6 +116,9 @@ export default function DashboardPage() {
   const [dashStats, setDashStats] = useState({ workoutsMonth: 0, hoursTraining: 0, calories: 0, streak: 0 })
   const [prevMonthCount, setPrevMonthCount] = useState(0)
   const [activeWorkouts, setActiveWorkouts] = useState<DbWorkoutCard[]>([])
+  const [workoutSystem, setWorkoutSystem] = useState<'free' | 'custom'>('free')
+  
+  const { profile: studentProfile, hasProfile, isAwaitingProgram } = useStudentProfile()
 
   useEffect(() => {
     if (showPresenceModal && user) {
@@ -131,44 +136,86 @@ export default function DashboardPage() {
   const loadActiveWorkouts = async () => {
     if (!user) return
     try {
-      const { data: treinosData, error: workoutsError } = await supabase
-        .from('workouts')
-        .select('id, name, created_at')
-        .order('created_at', { ascending: false })
-        .limit(4)
-
-      if (workoutsError) {
-        console.error('Erro ao buscar workouts:', workoutsError)
-      }
-
-      if (!treinosData || treinosData.length === 0) {
-        setActiveWorkouts([])
+      if (role === 'personal') {
+        // Personal trainer sees latest 4 created workouts
+        const { data: pWorkouts } = await supabase
+          .from('workouts')
+          .select('id, name, created_at')
+          .eq('created_by', user.id)
+          .order('created_at', { ascending: false })
+          .limit(4)
+        await enrichAndSetWorkouts(pWorkouts)
         return
       }
 
-      // Contar exercícios por treino via tabela workout_plans (que liga treinos a exercícios)
-      const enriched: DbWorkoutCard[] = []
-      for (const w of treinosData) {
-        const { count, error: countError } = await supabase
-          .from('workout_plans')
-          .select('*', { count: 'exact', head: true })
-          .eq('workout_id', w.id)
-          
-        if (countError) {
-          console.error(`Erro ao contar exercícios para o treino ${w.id}:`, countError)
-        }
+      // Detect plan and system
+      const { data: subData } = await supabase
+        .from('subscriptions')
+        .select('plan, status')
+        .eq('user_id', user.id)
+        .in('status', ['ativa', 'trial'])
+        .maybeSingle()
+
+      const planKey = normalizePlanKey(subData?.plan)
+      const system = getWorkoutSystem(planKey)
+      setWorkoutSystem(system)
+
+      if (system === 'custom') {
+        // For custom, load up to 4 assigned workouts
+        const { data: customWorkouts } = await supabase
+          .from('workouts')
+          .select('id, name, created_at')
+          .eq('workout_type', 'custom')
+          .eq('assigned_to', user.id)
+          .order('created_at', { ascending: false })
+          .limit(4)
         
-        enriched.push({
-          id: w.id,
-          name: w.name,
-          exercises_count: count ?? 0,
-          created_at: w.created_at,
-        })
+        await enrichAndSetWorkouts(customWorkouts)
+      } else {
+        // For FREE, load today's scheduled workout
+        const today = new Date().getDay()
+        const { data: schedule } = await supabase
+          .from('free_workout_schedule')
+          .select('workout_id')
+          .eq('day_of_week', today)
+          .maybeSingle()
+          
+        if (schedule?.workout_id) {
+          const { data: freeWorkout } = await supabase
+            .from('workouts')
+            .select('id, name, created_at')
+            .eq('id', schedule.workout_id)
+          await enrichAndSetWorkouts(freeWorkout)
+        } else {
+          setActiveWorkouts([])
+        }
       }
-      setActiveWorkouts(enriched)
     } catch (error) {
       console.error('Erro ao carregar treinos ativos:', error)
     }
+  }
+
+  const enrichAndSetWorkouts = async (data: any[] | null) => {
+    if (!data || data.length === 0) {
+      setActiveWorkouts([])
+      return
+    }
+
+    const enriched: DbWorkoutCard[] = []
+    for (const w of data) {
+      const { count } = await supabase
+        .from('workout_plans')
+        .select('*', { count: 'exact', head: true })
+        .eq('workout_id', w.id)
+        
+      enriched.push({
+        id: w.id,
+        name: w.name,
+        exercises_count: count ?? 0,
+        created_at: w.created_at,
+      })
+    }
+    setActiveWorkouts(enriched)
   }
 
   const loadDashStats = async () => {
@@ -406,8 +453,8 @@ export default function DashboardPage() {
           <div className="dashboard-card dashboard-card-wide">
             <div className="card-header">
               <div className="card-title">
-                <h2>Treinos Ativos</h2>
-                <span>{activeWorkouts.length} treinos disponíveis</span>
+                <h2>{role === 'personal' ? 'Últimos Treinos Criados' : workoutSystem === 'free' ? 'Treino de Hoje' : 'Seus Treinos'}</h2>
+                <span>{activeWorkouts.length} treino{activeWorkouts.length !== 1 ? 's' : ''} disponível{activeWorkouts.length !== 1 ? 'is' : ''}</span>
               </div>
               <button className="card-action" onClick={() => navigate('/treinos')}>
                 Ver todos
@@ -415,9 +462,37 @@ export default function DashboardPage() {
               </button>
             </div>
             <div className="workouts-grid">
-              {activeWorkouts.map((treino, index) => (
-                <WorkoutCard key={treino.id} treino={treino} index={index} />
-              ))}
+              {workoutSystem === 'custom' && !hasProfile && role !== 'personal' ? (
+                <div className="col-span-full bg-white/5 border border-white/10 rounded-2xl p-6 text-center">
+                  <div className="mx-auto w-12 h-12 rounded-full bg-purple-500/20 flex items-center justify-center text-purple-400 mb-3">
+                    <Target size={24} />
+                  </div>
+                  <h3 className="font-bold text-white mb-1">Preencha sua Ficha</h3>
+                  <p className="text-sm text-slate-400 mb-4">Para receber seus treinos personalizados, você precisa preencher sua ficha técnica.</p>
+                  <button onClick={() => navigate('/treinos')} className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-semibold rounded-lg text-sm transition-colors cursor-pointer">
+                    Preencher Agora
+                  </button>
+                </div>
+              ) : workoutSystem === 'custom' && isAwaitingProgram && role !== 'personal' ? (
+                <div className="col-span-full bg-amber-500/10 border border-amber-500/20 rounded-2xl p-6 text-center">
+                  <h3 className="font-bold text-amber-300 mb-1">Aguardando Personal</h3>
+                  <p className="text-sm text-slate-400">Sua ficha foi enviada. O personal está montando seu treino.</p>
+                </div>
+              ) : workoutSystem === 'free' && activeWorkouts.length === 0 ? (
+                <div className="col-span-full bg-white/5 border border-white/10 rounded-2xl p-6 text-center text-slate-400">
+                  Dia de descanso! Não há treino agendado para hoje.
+                </div>
+              ) : activeWorkouts.length === 0 ? (
+                 <div className="col-span-full bg-white/5 border border-white/10 rounded-2xl p-6 text-center text-slate-400">
+                  Você não tem treinos ativos no momento.
+                </div>
+              ) : (
+                activeWorkouts.map((treino, index) => (
+                  <div key={treino.id} onClick={() => navigate(`/treinos/${treino.id}`)} className="cursor-pointer">
+                    <WorkoutCard treino={treino} index={index} />
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </ProtectedFeature>

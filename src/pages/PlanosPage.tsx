@@ -22,9 +22,9 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { supabase } from '../lib/supabase'
 import { usePermissions } from '../context/PermissionsContext'
+import { motion, AnimatePresence } from 'framer-motion'
 import './Planos.css'
 
-const PIX_KEY = 'vsfitgym@gmail.com'
 
 interface DBPlan {
   id: string
@@ -74,14 +74,33 @@ export default function PlanosPage() {
   const [processing, setProcessing] = useState(false)
   const [chatStep, setChatStep] = useState<'greeting' | 'plan_selected' | 'payment' | 'confirming' | 'done'>('greeting')
   
-  const messagesEndRef = useRef<HTMLDivElement>(null)
+  const chatRef = useRef<HTMLDivElement>(null)
+
+  const isAtBottom = () => {
+    const el = chatRef.current
+    if (!el) return false
+    return el.scrollHeight - el.scrollTop <= el.clientHeight + 50
+  }
+
+  useEffect(() => {
+    if (messages.length === 0) return
+    const lastMessage = messages[messages.length - 1]
+
+    if (lastMessage?.role === 'user') {
+      chatRef.current?.scrollTo({
+        top: chatRef.current.scrollHeight,
+        behavior: 'smooth'
+      })
+    } else if (lastMessage?.role === 'bot' && isAtBottom()) {
+      chatRef.current?.scrollTo({
+        top: chatRef.current.scrollHeight,
+        behavior: 'smooth'
+      })
+    }
+  }, [messages])
 
   // Personal admin state
   const [pendingAssinaturas, setPendingAssinaturas] = useState<PendingAssinatura[]>([])
-
-  useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
-  }, [messages])
 
   useEffect(() => {
     if (!loading) {
@@ -178,7 +197,7 @@ export default function PlanosPage() {
             .from('pending_payments')
             .select('plan, status')
             .eq('user_id', user.id)
-            .eq('status', 'pending')
+            .in('status', ['pending', 'pending_payment', 'pending_confirmation'])
             .order('created_at', { ascending: false })
             .limit(1)
             .maybeSingle()
@@ -210,7 +229,7 @@ export default function PlanosPage() {
     const { data } = await supabase
       .from('pending_payments')
       .select('id, created_at, user_id, plan, amount')
-      .eq('status', 'pending')
+      .in('status', ['pending', 'pending_confirmation'])
     
     if (data) {
       // Map to the Interface format used in the UI
@@ -230,17 +249,44 @@ export default function PlanosPage() {
     setMessages(prev => [...prev, { id: Date.now(), role, text, pixData }])
   }
 
-  const startAssistant = (plan: DBPlan) => {
+  const startAssistant = async (plan: DBPlan) => {
     setSelectedPlan(plan)
     setShowAssistant(true)
     setMessages([])
-    setChatStep('greeting')
     setProcessing(false)
 
-    setTimeout(() => {
-      addMessage('bot', `Olá! 👋 Eu sou o assistente da VSFit Gym.
+    // Check if there is already a payment pending confirmation
+    const { data: existingPayment } = await supabase.from('pending_payments')
+      .select('status, pix_key')
+      .eq('user_id', user!.id)
+      .eq('plan', plan.nome)
+      .in('status', ['pending', 'pending_payment'])
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
+
+    if (existingPayment) {
+      setChatStep('confirming')
+      addMessage('bot', `Olá novamente! Recuperando sua solicitação para o **${plan.nome}**...`)
+      setTimeout(() => {
+        addMessage('bot', `A chave PIX já foi gerada:
+        
+**Chave PIX:** ${existingPayment.pix_key || 'Chave indisponível'}
+
+⏳ **Status:** Pagamento Pendente
+Se você já realizou a transferência, clique em "Já realizei o pagamento" para enviarmos para avaliação.`, {
+          pixKey: existingPayment.pix_key || '',
+          amount: plan.preco.toFixed(2),
+          planName: plan.nome,
+        })
+      }, 500)
+    } else {
+      setChatStep('greeting')
+      setTimeout(() => {
+        addMessage('bot', `Olá! 👋 Eu sou o assistente da VSFit Gym.
 Você selecionou o plano **${plan.nome}**. Vamos finalizar sua assinatura?`)
-    }, 500)
+      }, 500)
+    }
   }
 
   const generatePixInfo = async () => {
@@ -252,13 +298,16 @@ Você selecionou o plano **${plan.nome}**. Vamos finalizar sua assinatura?`)
     const amount = selectedPlan.preco
     const planName = selectedPlan.nome
 
+    const { data: fetchPixKey } = await supabase.rpc('get_pix_key')
+    const actualPixKey = fetchPixKey || 'Chave indisponível'
+
     // Insert pending payment into the official tracking table
     await supabase.from('pending_payments').insert({
       user_id: user.id,
       plan: selectedPlan.nome,
       amount: selectedPlan.preco,
-      status: 'pending',
-      pix_key: PIX_KEY
+      status: 'pending_payment',
+      pix_key: actualPixKey
     })
 
     // Refresh memory
@@ -268,11 +317,11 @@ Você selecionou o plano **${plan.nome}**. Vamos finalizar sua assinatura?`)
 
 **Plano:** ${planName}
 **Valor:** R$ ${amount.toFixed(2).replace('.', ',')}
-**Chave PIX:** ${PIX_KEY}
+**Chave PIX:** ${actualPixKey}
 
-⏳ **Após pagar, clique em "Já paguei"**
-Sua assinatura foi criada e o personal validará o pagamento logo em seguida.`, {
-      pixKey: PIX_KEY,
+⏳ **Status:** Pagamento Pendente
+Após realizar a transferência, clique no botão "Já realizei o pagamento" para enviarmos para avaliação do personal.`, {
+      pixKey: actualPixKey,
       amount: amount.toFixed(2),
       planName,
     })
@@ -282,15 +331,21 @@ Sua assinatura foi criada e o personal validará o pagamento logo em seguida.`, 
   const confirmPayment = async () => {
     if (!user || !selectedPlan) return
     setProcessing(true)
-    await new Promise(resolve => setTimeout(resolve, 1000))
+    
+    // Update status to pending_confirmation
+    await supabase.from('pending_payments').update({ status: 'pending_confirmation' })
+      .eq('user_id', user.id)
+      .eq('plan', selectedPlan.nome)
+      .in('status', ['pending', 'pending_payment'])
+
     setProcessing(false)
     setChatStep('done')
 
-    addMessage('bot', `✅ **Solitação Finalizada!**
+    addMessage('bot', `✅ **Status:** Aguardando Confirmação
 
-Você receberá acesso quando o personal confirmar o recebimento via Painel de Controle.
+Recebemos seu aviso! O acesso será liberado estritamente **após a confirmação do personal** no painel de controle.
 
-⏱️ Prazo: até 24 horas.`)
+⏱️ Prazo de avaliação: até 24 horas.`)
   }
 
   const handleUserMessage = async (text: string) => {
@@ -325,26 +380,28 @@ Você receberá acesso quando o personal confirmar o recebimento via Painel de C
   const copyToClipboard = (text: string) => navigator.clipboard.writeText(text)
 
   const handleApprove = async (paymentId: string, planName: string, userId: string) => {
-    // Approve in pending_payments
+    // Map plan name to plan key
+    const planKey = planName.toLowerCase().includes('essencial') || planName.toLowerCase().includes('basic') ? 'basic' :
+                  planName.toLowerCase().includes('personal') || planName.toLowerCase().includes('pro') ? 'pro' :
+                  planName.toLowerCase().includes('elite') || planName.toLowerCase().includes('premium') ? 'premium' : 'basic'
+
+    // Aprovar payment via função segura
+    const { error } = await supabase.rpc('confirm_payment', {
+      p_target_user_id: userId,
+      p_plan_type: planKey
+    })
+
+    if (error) {
+      alert('Erro ao confirmar: ' + error.message)
+      return
+    }
+
+    // Atualizar status do pagamento
     await supabase.from('pending_payments').update({ 
       status: 'approved',
       reviewed_at: new Date().toISOString(),
       reviewed_by: user?.id
     }).eq('id', paymentId)
-
-    // Activate subscription
-    const now = new Date()
-    const endDate = new Date(now)
-    endDate.setMonth(endDate.getMonth() + 1)
-
-    await supabase.from('subscriptions').upsert({
-      user_id: userId,
-      plan: planName, // Salvando o nome exato (ex: "Plano Básico")
-      status: 'ativa',
-      start_date: now.toISOString(),
-      end_date: endDate.toISOString(),
-      updated_at: now.toISOString()
-    }, { onConflict: 'user_id' })
 
     loadPendingApprovals()
     alert('Assinatura ativada!')
@@ -529,13 +586,13 @@ Você receberá acesso quando o personal confirmar o recebimento via Painel de C
                   ) : (
                     <button
                       className={`pl-btn ${p.popular ? 'pl-btn-primary' : 'pl-btn-secondary'}`}
-                      disabled={isCurrentActive || userAssinatura?.status === 'pendente'}
+                      disabled={isCurrentActive || (userAssinatura?.status === 'pendente' && !isPendingThis)}
                       onClick={() => startAssistant(p)}
                       style={{width: '100%'}}
                     >
                       {isPendingThis ? (
                         <>
-                          <Clock size={16} /> Aguardando Pgto.
+                          <Clock size={16} /> Retomar Pagamento
                         </>
                       ) : userAssinatura?.status === 'pendente' ? (
                         'Outro Aguardando'
@@ -558,100 +615,157 @@ Você receberá acesso quando o personal confirmar o recebimento via Painel de C
       )}
 
       {/* ── AI Assistant Modal ── */}
-      {showAssistant && (
-        <div className="assistant-overlay" onClick={() => setShowAssistant(false)}>
-          <div className="assistant-modal" onClick={e => e.stopPropagation()}>
-            <div className="assistant-header">
-              <div className="assistant-header-info">
-                <div className="assistant-avatar">
-                  <Bot size={20} />
+      <AnimatePresence>
+        {showAssistant && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="assistant-overlay" 
+            onClick={() => setShowAssistant(false)}
+          >
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 20 }}
+              transition={{ duration: 0.2, ease: "easeOut" }}
+              className="assistant-modal bg-gradient-to-b from-[#0B0F1A] to-[#0E1424] bg-white/5 backdrop-blur-md border border-white/10 rounded-2xl shadow-[0_10px_40px_rgba(0,0,0,0.6)]" 
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="assistant-header border-b border-white/10 p-4 pb-4">
+                <div className="assistant-header-info flex items-center gap-3">
+                  <div className="assistant-avatar bg-gradient-to-br from-purple-500/20 to-indigo-500/20 text-purple-400 p-2 rounded-xl border border-purple-500/20">
+                    <Bot size={22} />
+                  </div>
+                  <div>
+                    <h3 className="text-white font-semibold flex items-center gap-2">Assistente Virtual</h3>
+                    <span className="text-xs text-emerald-400 font-medium flex items-center gap-1"><span className="w-1.5 h-1.5 bg-emerald-400 rounded-full inline-block"></span> Online</span>
+                  </div>
                 </div>
-                <div>
-                  <h3>Assistente Pagamento</h3>
-                  <span className="assistant-status">Online</span>
-                </div>
+                <button className="assistant-close text-slate-400 hover:text-white transition-colors bg-white/5 hover:bg-white/10 p-2 rounded-full" onClick={() => setShowAssistant(false)}>
+                  <X size={18} />
+                </button>
               </div>
-              <button className="assistant-close" onClick={() => setShowAssistant(false)}>
-                <ArrowLeft size={18} />
-              </button>
-            </div>
 
-            <div className="assistant-messages">
-              {messages.map((msg) => (
-                <div key={msg.id} className={`message ${msg.role}`}>
-                  {msg.role === 'bot' && (
-                    <div className="message-avatar">
-                      <Bot size={14} />
-                    </div>
-                  )}
-                  <div className="message-bubble">
-                    {msg.text.split('\n').map((line, i) => {
-                      if (line.startsWith('**') && line.endsWith('**')) {
-                         return <strong key={i}>{line.slice(2, -2)}</strong>
-                      }
-                      return (
-                        <span key={i}>
-                          {line}
-                          {i < msg.text.split('\n').length - 1 && <br />}
-                        </span>
-                      )
-                    })}
-
-                    {msg.pixData && (
-                      <div className="payment-qr-code">
-                        <div className="pix-key-display">
-                          <span className="pix-key-icon">📧</span>
-                          <code className="pix-key-code">{msg.pixData.pixKey}</code>
-                          <button className="btn-copy" onClick={() => copyToClipboard(msg.pixData!.pixKey)}>
-                            <Copy size={14} /> Copiar Chave
-                          </button>
-                        </div>
+              <div ref={chatRef} className="assistant-messages flex flex-col space-y-4 px-4 py-6 max-w-2xl mx-auto w-full">
+                {messages.map((msg) => (
+                  <motion.div 
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    key={msg.id} 
+                    className={`message flex items-start gap-2 w-full ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}
+                  >
+                    {msg.role === 'bot' && (
+                      <div className="message-avatar shrink-0 mt-1">
+                         <div className="bg-purple-500/20 text-purple-400 p-1.5 rounded-lg border border-purple-500/20">
+                           <Bot size={16} />
+                         </div>
                       </div>
                     )}
-                  </div>
-                </div>
-              ))}
-              {processing && (
-                <div className="message bot">
-                  <div className="message-avatar"><Bot size={14} /></div>
-                  <div className="message-bubble processing">
-                    <Loader2 size={16} className="spinner border-none" />
-                    <span>Processando...</span>
-                  </div>
-                </div>
-              )}
-              <div ref={messagesEndRef} />
-            </div>
+                    <div className={`message-bubble inline-block max-w-[80%] text-sm px-4 py-3 ${
+                      msg.role === 'bot' 
+                        ? 'rounded-2xl bg-white/5 border border-white/10 text-white/80' 
+                        : 'rounded-2xl bg-gradient-to-r from-purple-600 to-indigo-600 text-white'
+                    }`}>
+                      {msg.text.split('\n').map((line, i) => {
+                        if (line.startsWith('**') && line.endsWith('**')) {
+                           return <strong key={i} className="text-white font-semibold">{line.slice(2, -2)}</strong>
+                        }
+                        return (
+                          <span key={i} className="block leading-relaxed">
+                            {line.includes('Pagamento Pendente') ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 mt-1 rounded-full bg-yellow-500/10 text-yellow-300 border border-yellow-500/20 font-medium">
+                                <Clock size={12} /> Pagamento Pendente
+                              </span>
+                            ) : line.includes('Aguardando Confirmação') ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs px-2.5 py-1 mt-1 rounded-full bg-blue-500/10 text-blue-300 border border-blue-500/20 font-medium">
+                                <CheckCircle2 size={12} /> Aguardando Confirmação
+                              </span>
+                            ) : line.includes('Status:') ? null : line}
+                          </span>
+                        )
+                      })}
 
-            <div className="assistant-input-area">
-              <div className="quick-actions" style={{marginBottom: '0.5rem'}}>
-                {chatStep === 'greeting' && (
-                  <button onClick={() => handleUserMessage('Sim')}>✅ Sim, continuar</button>
-                )}
-                {chatStep === 'payment' && (
-                  <button onClick={() => handleUserMessage('Gerar PIX')} style={{color: '#a78bfa', borderColor: '#8b5cf6'}}>
-                    💳 Gerar PIX
-                  </button>
-                )}
-                {chatStep === 'confirming' && (
-                  <button onClick={() => handleUserMessage('Já paguei')} style={{color: '#34d399', borderColor: '#10b981'}}>✅ Já paguei</button>
-                )}
-                {chatStep === 'done' && (
-                  <button onClick={() => { setShowAssistant(false); loadData(); }}>🏠 Fechar</button>
+                      {msg.pixData && (
+                        <div className="mt-3 p-4 rounded-2xl bg-white/5 border border-white/10 space-y-3">
+                          <div className="flex items-center gap-2 pb-3 border-b border-white/10">
+                            <Crown size={16} className="text-purple-400" />
+                            <span className="text-xs bg-purple-500/20 text-purple-300 px-2 py-1 rounded-md font-medium tracking-wide">ASSINATURA PREMIUM</span>
+                          </div>
+                          
+                          <div className="flex justify-between items-end">
+                            <div className="space-y-1">
+                              <span className="text-[10px] text-white/50 uppercase tracking-wider font-semibold">Valor do Plano</span>
+                              <div className="text-2xl font-bold text-white flex items-baseline gap-1">
+                                <span className="text-sm font-medium text-white/60">R$</span> {msg.pixData.amount}
+                              </div>
+                            </div>
+                            <div className="text-right space-y-1">
+                               <span className="text-[10px] text-white/50 uppercase tracking-wider font-semibold">Plano Selecionado</span>
+                               <div className="text-sm font-medium text-purple-300">{msg.pixData.planName}</div>
+                            </div>
+                          </div>
+                          
+                          <div className="space-y-2 pt-2">
+                            <span className="text-[10px] text-white/50 uppercase tracking-wider font-semibold">Chave PIX (E-mail)</span>
+                            <div className="flex items-center gap-2 w-full">
+                              <code className="flex-1 bg-black/40 px-3 py-2.5 rounded-xl text-sm font-mono text-purple-200 border border-white/5 overflow-hidden text-ellipsis whitespace-nowrap">
+                                {msg.pixData.pixKey}
+                              </code>
+                              <button 
+                                className="p-2.5 rounded-xl bg-purple-600 hover:bg-purple-500 transition-colors shrink-0 shadow-lg shadow-purple-500/20 hover:scale-105 active:scale-95 flex items-center justify-center text-white" 
+                                onClick={() => copyToClipboard(msg.pixData!.pixKey)}
+                                title="Copiar chave PIX"
+                              >
+                                <Copy size={18} />
+                              </button>
+                            </div>
+                          </div>
+                          
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                ))}
+                {processing && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="message flex items-start gap-2 w-full justify-start">
+                    <div className="message-avatar shrink-0 mt-1">
+                      <div className="bg-purple-500/20 text-purple-400 p-1.5 rounded-lg border border-purple-500/20">
+                         <Bot size={16} />
+                      </div>
+                    </div>
+                    <div className="message-bubble inline-block max-w-[80%] rounded-2xl bg-white/5 border border-white/10 text-white/80 px-4 py-3 flex items-center gap-2">
+                       <Loader2 size={16} className="animate-spin text-purple-400" />
+                       <span className="text-sm">Processando...</span>
+                    </div>
+                  </motion.div>
                 )}
               </div>
-              <div className="input-wrapper" style={{display: 'none'}}>
-                <input
-                  type="text"
-                  value={inputText}
-                  disabled
-                  placeholder="Selecione uma opção acima..."
-                />
+
+              <div className="assistant-input-area p-4 border-t border-white/10 bg-[#0B0F1A]/80 backdrop-blur-md">
+                <div className="flex gap-2 flex-wrap mt-4 max-w-2xl mx-auto w-full">
+                  {chatStep === 'greeting' && (
+                    <button className="rounded-xl px-5 py-2.5 font-medium bg-gradient-to-r from-purple-600 to-indigo-600 hover:opacity-90 transition-all duration-200 shadow-lg shadow-purple-500/20 text-white text-sm" onClick={() => handleUserMessage('Sim')}>✅ Sim, continuar</button>
+                  )}
+                  {chatStep === 'payment' && (
+                    <button className="rounded-xl px-5 py-2.5 font-medium border border-purple-500 text-purple-400 hover:bg-purple-500/10 transition-all duration-200 shadow-[0_0_15px_rgba(139,92,246,0.1)] text-sm flex items-center gap-2" onClick={() => handleUserMessage('Gerar PIX')}>
+                      <Copy size={16}/> Gerar Chave PIX
+                    </button>
+                  )}
+                  {chatStep === 'confirming' && (
+                    <button className="rounded-xl px-5 py-2.5 font-medium bg-gradient-to-r from-emerald-500 to-emerald-600 hover:opacity-90 transition-all duration-200 shadow-lg shadow-emerald-500/20 text-white text-sm flex items-center gap-2" onClick={() => handleUserMessage('Já paguei')}>
+                      <CheckCircle2 size={16}/> ✅ Já realizei o pagamento
+                    </button>
+                  )}
+                  {chatStep === 'done' && (
+                    <button className="rounded-xl px-5 py-2.5 font-medium bg-slate-800 hover:bg-slate-700 border border-slate-700 transition-all duration-200 text-white text-sm" onClick={() => { setShowAssistant(false); loadData(); }}>🏠 Fechar Assistente</button>
+                  )}
+                </div>
               </div>
-            </div>
-          </div>
-        </div>
-      )}
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

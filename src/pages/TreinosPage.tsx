@@ -12,6 +12,11 @@ import { type Workout, getLevelLabel } from '../data/workoutsData'
 import { SkeletonList } from '../components/ui/Skeleton'
 import DataStateHandler, { type DataState } from '../components/DataStateHandler'
 import { useWorkoutCompletion } from '../hooks/useWorkoutCompletion'
+import { useStudentProfile } from '../hooks/useStudentProfile'
+import { normalizePlanKey, getWorkoutSystem } from '../lib/permissions'
+import FreeWorkoutSchedule from '../components/FreeWorkoutSchedule'
+import AwaitingProgramBanner from '../components/AwaitingProgramBanner'
+import StudentProfileForm from '../components/StudentProfileForm'
 import './Treinos.css'
 
 /* ─── Level Config ─────────────────────────────────── */
@@ -175,10 +180,15 @@ export default function TreinosPage() {
   const { user, role } = useAuth()
   const { hasPermission } = usePermissions()
   const { isWorkoutCompleted, getCompletionStats } = useWorkoutCompletion()
+  const { profile: studentProfile, loading: profileLoading, saving: profileSaving, saveProfile, hasProfile, isAwaitingProgram } = useStudentProfile()
 
   const [treinos, setTreinos] = useState<Workout[]>([])
   const [dataState, setDataState] = useState<DataState>('loading')
   const [errorMessage, setErrorMessage] = useState<string | null>(null)
+
+  // Workout system detection
+  const [workoutSystem, setWorkoutSystem] = useState<'free' | 'custom' | 'personal'>('free')
+  const [showProfileForm, setShowProfileForm] = useState(false)
 
   // Assignment Modal
   const [assignModalOpen, setAssignModalOpen] = useState(false)
@@ -200,16 +210,63 @@ export default function TreinosPage() {
 
   useEffect(() => {
     if (!user) return
-    carregarTreinos()
-  }, [user, role])
+    detectSystemAndLoad()
+  }, [user, role, profileLoading])
 
-  const carregarTreinos = async () => {
+  const detectSystemAndLoad = async () => {
+    if (profileLoading) return
+
+    if (role === 'personal') {
+      setWorkoutSystem('personal')
+      await carregarTreinos('personal')
+      return
+    }
+
+    // Detect user's plan from subscriptions
+    const { data: subData } = await supabase
+      .from('subscriptions')
+      .select('plan, status')
+      .eq('user_id', user!.id)
+      .in('status', ['ativa', 'trial'])
+      .maybeSingle()
+
+    const planKey = normalizePlanKey(subData?.plan)
+    const system = getWorkoutSystem(planKey)
+    console.log('USER PLAN:', planKey, '| WORKOUT SYSTEM:', system)
+
+    if (system === 'custom') {
+      setWorkoutSystem('custom')
+      // Check if student profile exists
+      if (!hasProfile) {
+        setShowProfileForm(true)
+        setDataState('success')
+        return
+      }
+      // Profile exists — load custom workouts
+      setShowProfileForm(false)
+      await carregarTreinos('custom')
+    } else {
+      setWorkoutSystem('free')
+      setShowProfileForm(false)
+      // FreeWorkoutSchedule component handles its own loading
+      setDataState('success')
+    }
+  }
+
+  const carregarTreinos = async (system: 'personal' | 'custom') => {
     try {
       setDataState('loading')
       setErrorMessage(null)
 
       let query = supabase.from('workouts').select('*').order('created_at', { ascending: false })
-      if (role === 'personal') query = query.eq('created_by', user?.id)
+
+      if (system === 'personal') {
+        // Personal sees all their workouts (both free and custom)
+        query = query.eq('created_by', user?.id)
+      } else {
+        // Custom: only workouts assigned to this user
+        query = query.eq('workout_type', 'custom').eq('assigned_to', user?.id)
+      }
 
       const { data, error } = await query
       if (error) { setErrorMessage(error.message); setDataState('error'); return }
@@ -292,7 +349,7 @@ export default function TreinosPage() {
       try {
         const { error } = await supabase.from('workouts').delete().eq('id', treinoId)
         if (error) throw error
-        carregarTreinos()
+        detectSystemAndLoad()
       } catch (err: any) { alert('Erro ao excluir: ' + err.message) }
     }
   }
@@ -317,7 +374,7 @@ export default function TreinosPage() {
     a.email?.toLowerCase().includes(searchAluno.toLowerCase())
   )
 
-  const isTreinosLocked = role !== 'personal' && !hasPermission('Treinos Ativos')
+  const isTreinosLocked = false // No longer lock based on permissions — system handles access
   const { completedCount, percentage } = getCompletionStats(treinos.length)
 
   return (
@@ -352,12 +409,16 @@ export default function TreinosPage() {
       <div className="treinos-header">
         <div className="header-content">
           <h1 className="page-title">
-            {role === 'personal' ? 'Gerenciar Treinos' : 'Meus Treinos'}
+            {role === 'personal' ? 'Gerenciar Treinos' : workoutSystem === 'free' ? 'Treinos da Semana' : 'Meus Treinos'}
           </h1>
           <p className="page-subtitle">
-            {role === 'personal' ? 'Crie e gerencie os treinos dos seus alunos' : 'Seus treinos personalizados pelo personal'}
+            {role === 'personal'
+              ? 'Crie e gerencie treinos padrão e personalizados'
+              : workoutSystem === 'free'
+              ? 'Seus treinos padrão para a semana'
+              : 'Treinos personalizados pelo seu personal'}
           </p>
-          {dataState === 'success' && (
+          {dataState === 'success' && workoutSystem !== 'free' && treinos.length > 0 && (
             <div className="header-badge">
               <Flame size={11} />
               {treinos.length} treino{treinos.length !== 1 ? 's' : ''} disponível{treinos.length !== 1 ? 'is' : ''}
@@ -375,36 +436,64 @@ export default function TreinosPage() {
         )}
       </div>
 
-      {/* ── Cards Grid ── */}
-      <DataStateHandler
-        state={dataState}
-        loadingComponent={<SkeletonList count={4} />}
-        errorMessage={errorMessage || 'Erro ao carregar treinos'}
-        errorAction={{ label: 'Tentar novamente', onClick: carregarTreinos }}
-        emptyTitle="Nenhum treino criado ainda"
-        emptyMessage="Crie seu primeiro treino para começar"
-        emptyAction={role === 'personal' ? { label: 'Criar Treino', onClick: () => navigate('/treinos/criar') } : undefined}
-      >
-        {treinos.length > 0 && (
-          <div className="treinos-grid">
-            {treinos.map((treino, index) => (
-              <WorkoutCard
-                key={treino.id}
-                treino={treino}
-                index={index}
-                role={role}
-                progress={workoutProgress[String(index)] ?? 70}
-                isRecommended={index === 0 && role !== 'personal'}
-                isLocked={isTreinosLocked}
-                isCompleted={isWorkoutCompleted(treino.id)}
-                onCardClick={handleCardClick}
-                onDeleteClick={handleDeleteClick}
-                onAssignClick={handleAssignClick}
-              />
-            ))}
-          </div>
-        )}
-      </DataStateHandler>
+      {/* ── Student Profile Form (paid users without profile) ── */}
+      {showProfileForm && workoutSystem === 'custom' && (
+        <StudentProfileForm
+          onSubmit={async (data) => {
+            const ok = await saveProfile(data)
+            if (ok) {
+              setShowProfileForm(false)
+              // After saving, they'll be in awaiting_program state
+            }
+            return ok
+          }}
+          saving={profileSaving}
+          existingProfile={studentProfile}
+        />
+      )}
+
+      {/* ── Awaiting Program Banner (paid users with profile, no workouts) ── */}
+      {!showProfileForm && workoutSystem === 'custom' && isAwaitingProgram && treinos.length === 0 && dataState !== 'loading' && (
+        <AwaitingProgramBanner />
+      )}
+
+      {/* ── FREE Workout Schedule ── */}
+      {workoutSystem === 'free' && !showProfileForm && (
+        <FreeWorkoutSchedule />
+      )}
+
+      {/* ── Cards Grid (Personal + Custom paid users) ── */}
+      {(workoutSystem === 'personal' || (workoutSystem === 'custom' && !showProfileForm)) && (
+        <DataStateHandler
+          state={dataState}
+          loadingComponent={<SkeletonList count={4} />}
+          errorMessage={errorMessage || 'Erro ao carregar treinos'}
+          errorAction={{ label: 'Tentar novamente', onClick: () => detectSystemAndLoad() }}
+          emptyTitle={workoutSystem === 'personal' ? 'Nenhum treino criado ainda' : 'Nenhum treino atribuído'}
+          emptyMessage={workoutSystem === 'personal' ? 'Crie seu primeiro treino para começar' : 'Seu personal ainda não criou seu treino personalizado'}
+          emptyAction={role === 'personal' ? { label: 'Criar Treino', onClick: () => navigate('/treinos/criar') } : undefined}
+        >
+          {treinos.length > 0 && (
+            <div className="treinos-grid">
+              {treinos.map((treino, index) => (
+                <WorkoutCard
+                  key={treino.id}
+                  treino={treino}
+                  index={index}
+                  role={role}
+                  progress={workoutProgress[String(index)] ?? 70}
+                  isRecommended={index === 0 && role !== 'personal'}
+                  isLocked={isTreinosLocked}
+                  isCompleted={isWorkoutCompleted(treino.id)}
+                  onCardClick={handleCardClick}
+                  onDeleteClick={handleDeleteClick}
+                  onAssignClick={handleAssignClick}
+                />
+              ))}
+            </div>
+          )}
+        </DataStateHandler>
+      )}
 
       {/* ── Assignment Modal ── */}
       {assignModalOpen && (

@@ -16,12 +16,12 @@ interface Payment {
   user_id: string
   plan: string
   amount: number
-  status: 'pending' | 'approved' | 'rejected'
+  status: 'pending' | 'pending_payment' | 'pending_confirmation' | 'approved' | 'rejected'
   reviewed_at?: string
   users?: { raw_user_meta_data?: { name?: string }; email?: string } // Joined
 }
 
-type FilterTab = 'todos' | 'pending' | 'approved' | 'rejected';
+type FilterTab = 'todos' | 'pending_confirmation' | 'approved' | 'rejected';
 
 export default function PagamentosPage() {
   const { user, role, loading } = useAuth()
@@ -94,7 +94,7 @@ export default function PagamentosPage() {
 
   const kpis = useMemo(() => {
     const totalRevenue = payments.filter(p => p.status === 'approved').reduce((acc, p) => acc + (p.amount || 0), 0)
-    const pendingCount = payments.filter(p => p.status === 'pending').length
+    const pendingCount = payments.filter(p => ['pending_confirmation', 'pending'].includes(p.status)).length
     const approvedCount = payments.filter(p => p.status === 'approved').length
     const rejectedCount = payments.filter(p => p.status === 'rejected').length
     
@@ -105,7 +105,9 @@ export default function PagamentosPage() {
 
   const filteredPayments = useMemo(() => {
     return payments.filter(p => {
-      const matchTab = activeTab === 'todos' || p.status === activeTab;
+      const matchTab = activeTab === 'todos' || 
+                        p.status === activeTab ||
+                        (activeTab === 'pending_confirmation' && ['pending_confirmation', 'pending'].includes(p.status));
       const userName = p.users?.raw_user_meta_data?.name?.toLowerCase() || '';
       const planName = p.plan?.toLowerCase() || '';
       const matchSearch = userName.includes(search.toLowerCase()) || planName.includes(search.toLowerCase());
@@ -114,7 +116,8 @@ export default function PagamentosPage() {
   }, [payments, activeTab, search])
 
   const getStatusBadge = (status: string) => {
-    if (status === 'pending') return <span className="pg-status-badge pg-status-pending">Pendente</span>
+    if (['pending_confirmation', 'pending'].includes(status)) return <span className="pg-status-badge pg-status-pending">Avaliação</span>
+    if (status === 'pending_payment') return <span className="pg-status-badge pg-status-pending text-xs" style={{opacity: 0.7}}>Pendente Pgto</span>
     if (status === 'approved') return <span className="pg-status-badge pg-status-approved">Aprovado</span>
     if (status === 'rejected') return <span className="pg-status-badge pg-status-rejected">Rejeitado</span>
     return null
@@ -176,8 +179,8 @@ export default function PagamentosPage() {
             Todos <span className="pg-badge-count">{payments.length}</span>
           </button>
           <button 
-            className={`pg-filter-pill ${activeTab === 'pending' ? 'active' : ''}`}
-            onClick={() => setActiveTab('pending')}
+            className={`pg-filter-pill ${activeTab === 'pending_confirmation' ? 'active' : ''}`}
+            onClick={() => setActiveTab('pending_confirmation')}
           >
             Pendentes <span className="pg-badge-count">{kpis.pendingCount}</span>
           </button>

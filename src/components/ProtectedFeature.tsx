@@ -1,6 +1,7 @@
 import React from 'react'
 import { Lock, Zap } from 'lucide-react'
 import { usePermissions } from '../context/PermissionsContext'
+import { useAuth } from '../context/AuthContext'
 import { useNavigate } from 'react-router-dom'
 
 interface ProtectedFeatureProps {
@@ -10,7 +11,12 @@ interface ProtectedFeatureProps {
 
 export default function ProtectedFeature({ feature, children }: ProtectedFeatureProps) {
   const { hasPermission, loading } = usePermissions()
+  const { role } = useAuth()
   const navigate = useNavigate()
+
+  if (role === 'personal') {
+    return <>{children}</>
+  }
 
   if (loading) {
     return <div className="animate-pulse bg-white/5 rounded-2xl h-full w-full min-h-[100px]" />

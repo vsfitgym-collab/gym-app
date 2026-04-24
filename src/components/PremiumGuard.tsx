@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { Lock, Crown, Sparkles, ArrowRight } from 'lucide-react'
 import { useSubscription } from '../hooks/useSubscription'
 import { isPremium, isBasic, isPlanActive, isFree } from '../lib/planUtils'
+import { useAuth } from '../context/AuthContext'
 import './PremiumGuard.css'
 
 interface PremiumGuardProps {
@@ -19,6 +20,7 @@ export const PremiumGuard = memo(function PremiumGuard({
   requirePlan = 'premium',
 }: PremiumGuardProps) {
   const navigate = useNavigate()
+  const { role } = useAuth()
   const { plan, isPremium: hookIsPremium, isBasic: hookIsBasic, subscription, loading } = useSubscription()
 
   if (loading) {
@@ -28,6 +30,10 @@ export const PremiumGuard = memo(function PremiumGuard({
         <span>Verificando plano...</span>
       </div>
     )
+  }
+
+  if (role === 'personal') {
+    return <>{children}</>
   }
 
   const hasPlan = !!plan && plan !== 'free'
