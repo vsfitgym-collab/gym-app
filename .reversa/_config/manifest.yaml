@@ -1,0 +1,23 @@
+installation:
+  version: 1.2.14
+  installDate: 2026-05-01T18:56:03.492Z
+  lastUpdated: 2026-05-01T18:56:03.492Z
+
+engines:
+  - codex
+  - gemini-cli
+  - opencode
+
+agents:
+  - reversa
+  - reversa-scout
+  - reversa-archaeologist
+  - reversa-detective
+  - reversa-architect
+  - reversa-writer
+  - reversa-reviewer
+  - reversa-visor
+  - reversa-data-master
+  - reversa-design-system
+  - reversa-agents-help
+  - reversa-reconstructor

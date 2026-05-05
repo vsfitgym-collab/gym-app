@@ -1,0 +1,37 @@
+<svg viewBox="0 0 512 512" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0B0F1A;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#111827;stop-opacity:1" />
+    </linearGradient>
+    <filter id="glow">
+      <feGaussianBlur stdDeviation="3" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+  
+  <!-- Background with rounded corners -->
+  <rect width="512" height="512" fill="url(#bgGradient)" rx="100"/>
+  
+  <!-- Inner glow circle -->
+  <circle cx="256" cy="256" r="200" fill="none" stroke="#22C55E" stroke-width="1" opacity="0.15"/>
+  
+  <!-- V Shape (left) -->
+  <g filter="url(#glow)">
+    <path d="M 140 120 L 220 320 L 280 120" stroke="#22C55E" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  
+  <!-- S Shape (right) -->
+  <g filter="url(#glow)">
+    <!-- Top curve -->
+    <path d="M 340 140 Q 380 140 380 180 Q 380 210 340 220 L 300 225" stroke="#22C55E" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+    <!-- Bottom curve -->
+    <path d="M 300 285 Q 300 320 340 330 Q 380 340 380 370 Q 380 400 340 400 L 280 400" stroke="#22C55E" stroke-width="32" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  
+  <!-- Connecting line bridge -->
+  <line x1="295" y1="250" x2="305" y2="250" stroke="#22C55E" stroke-width="28" stroke-linecap="round" opacity="0.8"/>
+</svg>

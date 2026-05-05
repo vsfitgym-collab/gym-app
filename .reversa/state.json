@@ -1,0 +1,61 @@
+{
+  "version": "1.2.14",
+  "project": "gym-app",
+  "user_name": "laercio",
+  "chat_language": "pt-br",
+  "doc_language": "Português",
+  "answer_mode": "chat",
+  "doc_level": "completo",
+  "output_folder": "_reversa_sdd",
+  "phase": null,
+  "completed": [],
+  "pending": [
+    "reconhecimento",
+    "escavacao",
+    "interpretacao",
+    "geracao",
+    "revisao"
+  ],
+  "checkpoints": {},
+  "engines": [
+    "codex",
+    "gemini-cli",
+    "opencode"
+  ],
+  "agents": [
+    "reversa",
+    "reversa-scout",
+    "reversa-archaeologist",
+    "reversa-detective",
+    "reversa-architect",
+    "reversa-writer",
+    "reversa-reviewer",
+    "reversa-visor",
+    "reversa-data-master",
+    "reversa-design-system",
+    "reversa-agents-help",
+    "reversa-reconstructor"
+  ],
+  "created_files": [
+    ".agents\\skills\\reversa",
+    ".agents\\skills\\reversa-scout",
+    ".agents\\skills\\reversa-archaeologist",
+    ".agents\\skills\\reversa-detective",
+    ".agents\\skills\\reversa-architect",
+    ".agents\\skills\\reversa-writer",
+    ".agents\\skills\\reversa-reviewer",
+    ".agents\\skills\\reversa-visor",
+    ".agents\\skills\\reversa-data-master",
+    ".agents\\skills\\reversa-design-system",
+    ".agents\\skills\\reversa-agents-help",
+    ".agents\\skills\\reversa-reconstructor",
+    "AGENTS.md",
+    "GEMINI.md",
+    ".reversa\\state.json",
+    ".reversa\\config.toml",
+    ".reversa\\config.user.toml",
+    ".reversa\\plan.md",
+    ".reversa\\version",
+    ".reversa\\_config\\manifest.yaml"
+  ]
+}
