@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom"
 import { supabase } from "@/lib/supabase"
 import { useAuthStore } from "@/stores/authStore"
 import { LoginCard } from "@/components/auth/LoginCard"
+import { InstallPrompt } from "@/components/pwa/InstallPrompt"
 
 const LOGIN_TIMEOUT_MS = 12000
 
@@ -96,15 +97,18 @@ export function LoginPage() {
     }
   }
 
-  return (
-    <LoginCard
+return (
+    <>
+      <InstallPrompt />
+      <LoginCard
       email={formData.email}
       password={formData.password}
       loading={loading}
       error={error}
       onEmailChange={(email) => setFormData((current) => ({ ...current, email }))}
       onPasswordChange={(password) => setFormData((current) => ({ ...current, password }))}
-      onSubmit={handleSubmit}
-    />
+onSubmit={handleSubmit}
+      />
+    </>
   )
 }

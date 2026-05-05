@@ -5,7 +5,6 @@ import { useAuthStore } from "@/stores/authStore"
 import { useSubscription } from "@/hooks/useFeatureAccess"
 import { PageLoading } from "@/components/ui/Loading"
 import { LockedScreen } from "@/components/features/LockedScreen"
-import { useInstallPrompt } from "@/hooks/useInstallPrompt"
 import { OfflinePage } from "@/pages/OfflinePage"
 import { PageTransition } from "@/components/PageTransition"
 
@@ -16,7 +15,6 @@ interface LayoutProps {
 export function StudentLayout({ children }: LayoutProps) {
   const { user, loading, initialized } = useAuthStore()
   const { subscription, loading: subLoading } = useSubscription()
-  const { isInstallable, installApp } = useInstallPrompt()
   const [isOnline, setIsOnline] = useState(navigator.onLine);
 
   useEffect(() => {
@@ -55,21 +53,8 @@ export function StudentLayout({ children }: LayoutProps) {
     return <LockedScreen fullScreen title="Assinatura expirada" message="Renove agora para continuar usando o app" />
   }
 
-  return (
+return (
     <div className="flex min-h-screen bg-background">
-      {/* Install Banner */}
-      {isInstallable && (
-        <div className="fixed top-0 left-0 right-0 z-50 bg-blue-600 text-white p-3 flex justify-between items-center shadow-lg animate-in slide-in-from-top duration-300">
-          <p className="text-sm font-medium">Instale o App para melhor experiência!</p>
-          <button 
-            onClick={installApp}
-            className="bg-white text-blue-600 px-4 py-1 rounded-full text-xs font-bold hover:bg-gray-100 transition-colors"
-          >
-            Instalar
-          </button>
-        </div>
-      )}
-
       <StudentSidebar />
       
       <main className="flex-1 w-full overflow-y-auto">
