@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react"
+import { useState, useEffect, type FormEvent } from "react"
 import { useNavigate } from "react-router-dom"
 import { supabase } from "@/lib/supabase"
 import { useAuthStore } from "@/stores/authStore"
@@ -45,12 +45,27 @@ function getLoginErrorMessage(error: unknown) {
 export function LoginPage() {
   const navigate = useNavigate()
   const fetchUser = useAuthStore((state) => state.fetchUser)
+  const { user, profileExtended, initialized } = useAuthStore()
   const [loading, setLoadingLocal] = useState(false)
   const [error, setError] = useState("")
   const [formData, setFormData] = useState({
     email: "",
     password: "",
   })
+
+  useEffect(() => {
+    if (initialized && user) {
+      if (user.role === "trainer") {
+        navigate("/trainer", { replace: true })
+        return
+      }
+      if (profileExtended && !profileExtended.onboarding_completed) {
+        navigate("/onboarding", { replace: true })
+        return
+      }
+      navigate("/dashboard", { replace: true })
+    }
+  }, [initialized, user, profileExtended, navigate])
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()

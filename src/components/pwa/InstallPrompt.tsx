@@ -17,6 +17,8 @@ export function InstallPrompt() {
   useEffect(() => {
     if (shouldShowPrompt) {
       setLocalShow(true);
+    } else {
+      setLocalShow(false);
     }
   }, [shouldShowPrompt]);
 

@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { supabase } from "@/lib/supabase";
+import { useAuthStore } from "@/stores/authStore";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import {
@@ -15,7 +16,22 @@ import { motion } from "framer-motion";
 
 export function RegisterPage() {
   const navigate = useNavigate();
+  const { user, profileExtended, initialized } = useAuthStore()
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    if (initialized && user) {
+      if (user.role === "trainer") {
+        navigate("/trainer", { replace: true })
+        return
+      }
+      if (profileExtended && !profileExtended.onboarding_completed) {
+        navigate("/onboarding", { replace: true })
+        return
+      }
+      navigate("/dashboard", { replace: true })
+    }
+  }, [initialized, user, profileExtended, navigate])
   const [error, setError] = useState("");
   const [success, setSuccess] = useState(false);
   const [formData, setFormData] = useState({

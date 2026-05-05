@@ -6,7 +6,7 @@ import {
 } from "@/lib/supabase";
 import { isPlanActive } from "@/lib/services/featureAccess";
 
-interface AuthState {
+export interface AuthState {
   user: Profile | null;
   profileExtended: UserProfileExtended | null;
   loading: boolean;
