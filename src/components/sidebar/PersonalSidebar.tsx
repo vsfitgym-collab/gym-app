@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { NavLink, useLocation, useNavigate } from "react-router-dom"
 import { cn } from "@/lib/utils"
 import { useAuthStore } from "@/stores/authStore"
@@ -38,6 +38,16 @@ export function PersonalSidebar({ className }: { className?: string }) {
   const location = useLocation()
   const navigate = useNavigate()
   const [isOpen, setIsOpen] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (user?.avatar_url) {
+      setAvatarUrl(user.avatar_url)
+    } else if (user?.id) {
+      const localAvatar = localStorage.getItem(`avatar_${user.id}`)
+      setAvatarUrl(localAvatar)
+    }
+  }, [user])
 
   const handleSignOut = async () => {
     await signOut()
@@ -80,9 +90,17 @@ export function PersonalSidebar({ className }: { className?: string }) {
 
       <div className="p-4 border-t border-white/10">
         <div className="flex items-center gap-3 p-3 rounded-xl bg-white/5">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-medium">
-            {user?.full_name ? getInitials(user.full_name) : "?"}
-          </div>
+          {avatarUrl ? (
+            <img
+              src={avatarUrl}
+              alt="Avatar"
+              className="w-10 h-10 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-10 h-10 rounded-full bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white font-medium">
+              {user?.full_name ? getInitials(user.full_name) : "?"}
+            </div>
+          )}
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium truncate">{user?.full_name || "Personal"}</p>
             <p className="text-xs text-muted-foreground">Personal Trainer</p>
